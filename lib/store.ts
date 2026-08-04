@@ -14,6 +14,7 @@ import { redisStore } from "./backends/redisStore";
 import type { StoreBackend } from "./storeTypes";
 
 export type { NameItem, MenuItem, Order, ImageInfo, UpsertOrderInput } from "./storeTypes";
+export { PAYMENT_OPTIONS, DEFAULT_ADMIN_NAME } from "./storeTypes";
 
 const useRedis = Boolean(
   (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) ||
@@ -34,6 +35,10 @@ export const deleteMenuItem = backend.deleteMenuItem;
 export const listOrdersByDate = backend.listOrdersByDate;
 export const listOrderDates = backend.listOrderDates;
 export const upsertOrder = backend.upsertOrder;
+export const resetOrders = backend.resetOrders;
+
+export const getAdminName = backend.getAdminName;
+export const setAdminName = backend.setAdminName;
 
 export const getImageInfo = backend.getImageInfo;
 export const saveImageFile = backend.saveImageFile;

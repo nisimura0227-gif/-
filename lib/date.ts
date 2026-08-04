@@ -85,3 +85,13 @@ export function isTodayOrderClosed(cutoffHour = 7, cutoffMinute = 55, now: Date 
 }
 
 export const ORDER_CUTOFF_LABEL = "7:55";
+
+// dateStr（YYYY-MM-DD, JST基準）が「今日から数えて過去days日以内」かどうか
+export function isWithinLastDays(dateStr: string, days: number, now: Date = new Date()): boolean {
+  const p = getJstParts(now);
+  const todayUtc = Date.UTC(p.year, p.month - 1, p.day);
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const targetUtc = Date.UTC(y, m - 1, d);
+  const diffDays = Math.floor((todayUtc - targetUtc) / (24 * 60 * 60 * 1000));
+  return diffDays >= 0 && diffDays < days;
+}
