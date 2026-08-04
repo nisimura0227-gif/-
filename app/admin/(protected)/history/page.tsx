@@ -8,6 +8,7 @@ type Order = {
   deliveryDate: string;
   name: string;
   menuItem: string;
+  isLarge: boolean;
   paymentMethod: string;
   orderedAt: string;
 };
@@ -69,7 +70,8 @@ export default function AdminHistoryPage() {
                 <div>
                   <p className="font-bold text-gray-800">{o.name}</p>
                   <p className="text-gray-500">
-                    {o.menuItem} ・ {o.paymentMethod}
+                    {o.menuItem}
+                    {o.isLarge ? "（大盛り）" : ""} ・ {o.paymentMethod}
                   </p>
                 </div>
                 <span className="text-xs text-gray-400">{formatTimeHm(new Date(o.orderedAt))}</span>
