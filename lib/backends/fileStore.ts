@@ -14,7 +14,7 @@ import type {
   UpsertOrderInput,
   StoreBackend,
 } from "../storeTypes";
-import { IMAGE_MIME } from "../storeTypes";
+import { IMAGE_MIME, DEFAULT_ADMIN_NAME } from "../storeTypes";
 
 const DB_DIR = process.env.DATA_DIR ? path.join(process.env.DATA_DIR, "db") : path.join(process.cwd(), "data", "db");
 const SEED_DIR = path.join(process.cwd(), "data", "seed");
@@ -77,7 +77,10 @@ async function listNames(): Promise<NameItem[]> {
 async function addName(name: string): Promise<NameItem> {
   return withLock("names.json", async () => {
     const list = await readJson<NameItem[]>("names.json", []);
-    const item: NameItem = { id: randomUUID(), name: name.trim(), createdAt: new Date().toISOString() };
+    const trimmed = name.trim();
+    const existing = list.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) return existing;
+    const item: NameItem = { id: randomUUID(), name: trimmed, createdAt: new Date().toISOString() };
     list.push(item);
     await writeJson("names.json", list);
     return item;
@@ -109,22 +112,27 @@ async function listMenuItems(): Promise<MenuItem[]> {
   return readJson<MenuItem[]>("menu.json", []);
 }
 
-async function addMenuItem(name: string): Promise<MenuItem> {
+async function addMenuItem(name: string, price: number): Promise<MenuItem> {
   return withLock("menu.json", async () => {
     const list = await readJson<MenuItem[]>("menu.json", []);
-    const item: MenuItem = { id: randomUUID(), name: name.trim(), createdAt: new Date().toISOString() };
+    const item: MenuItem = {
+      id: randomUUID(),
+      name: name.trim(),
+      price: Number.isFinite(price) ? price : 0,
+      createdAt: new Date().toISOString(),
+    };
     list.push(item);
     await writeJson("menu.json", list);
     return item;
   });
 }
 
-async function updateMenuItem(id: string, name: string): Promise<MenuItem | null> {
+async function updateMenuItem(id: string, name: string, price: number): Promise<MenuItem | null> {
   return withLock("menu.json", async () => {
     const list = await readJson<MenuItem[]>("menu.json", []);
     const idx = list.findIndex((m) => m.id === id);
     if (idx === -1) return null;
-    list[idx] = { ...list[idx], name: name.trim() };
+    list[idx] = { ...list[idx], name: name.trim(), price: Number.isFinite(price) ? price : 0 };
     await writeJson("menu.json", list);
     return list[idx];
   });
@@ -163,6 +171,7 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
       record = {
         ...all[idx],
         menuItem: input.menuItem,
+        isLarge: input.isLarge,
         paymentMethod: input.paymentMethod,
         orderedVia: input.orderedVia,
         orderedAt: now,
@@ -175,6 +184,7 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
         orderedVia: input.orderedVia,
         name: input.name,
         menuItem: input.menuItem,
+        isLarge: input.isLarge,
         paymentMethod: input.paymentMethod,
         orderedAt: now,
       };
@@ -182,6 +192,25 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
     }
     await writeJson("orders.json", all);
     return record;
+  });
+}
+
+async function resetOrders(): Promise<void> {
+  return withLock("orders.json", async () => {
+    await writeJson("orders.json", []);
+  });
+}
+
+async function getAdminName(): Promise<string> {
+  const data = await readJson<{ name: string } | null>("adminName.json", null);
+  return data?.name?.trim() || DEFAULT_ADMIN_NAME;
+}
+
+async function setAdminName(name: string): Promise<string> {
+  return withLock("adminName.json", async () => {
+    const trimmed = name.trim() || DEFAULT_ADMIN_NAME;
+    await writeJson("adminName.json", { name: trimmed });
+    return trimmed;
   });
 }
 
@@ -226,6 +255,9 @@ export const fileStore: StoreBackend = {
   listOrdersByDate,
   listOrderDates,
   upsertOrder,
+  resetOrders,
+  getAdminName,
+  setAdminName,
   getImageInfo,
   saveImageFile,
   getImageFile,

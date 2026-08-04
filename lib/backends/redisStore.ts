@@ -17,13 +17,14 @@ import type {
   UpsertOrderInput,
   StoreBackend,
 } from "../storeTypes";
-import { IMAGE_MIME } from "../storeTypes";
+import { IMAGE_MIME, DEFAULT_ADMIN_NAME } from "../storeTypes";
 
 const NAMES_KEY = "bento:names";
 const MENU_KEY = "bento:menu";
 const ORDERS_KEY = "bento:orders";
 const IMAGE_META_KEY = "bento:image:meta";
 const IMAGE_DATA_KEY = "bento:image:data";
+const ADMIN_NAME_KEY = "bento:adminName";
 
 let client: Redis | null = null;
 function redis(): Redis {
@@ -63,7 +64,10 @@ async function listNames(): Promise<NameItem[]> {
 
 async function addName(name: string): Promise<NameItem> {
   const list = await getJson<NameItem[]>(NAMES_KEY, []);
-  const item: NameItem = { id: randomUUID(), name: name.trim(), createdAt: new Date().toISOString() };
+  const trimmed = name.trim();
+  const existing = list.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return existing;
+  const item: NameItem = { id: randomUUID(), name: trimmed, createdAt: new Date().toISOString() };
   list.push(item);
   await setJson(NAMES_KEY, list);
   return item;
@@ -90,19 +94,24 @@ async function listMenuItems(): Promise<MenuItem[]> {
   return getJson<MenuItem[]>(MENU_KEY, []);
 }
 
-async function addMenuItem(name: string): Promise<MenuItem> {
+async function addMenuItem(name: string, price: number): Promise<MenuItem> {
   const list = await getJson<MenuItem[]>(MENU_KEY, []);
-  const item: MenuItem = { id: randomUUID(), name: name.trim(), createdAt: new Date().toISOString() };
+  const item: MenuItem = {
+    id: randomUUID(),
+    name: name.trim(),
+    price: Number.isFinite(price) ? price : 0,
+    createdAt: new Date().toISOString(),
+  };
   list.push(item);
   await setJson(MENU_KEY, list);
   return item;
 }
 
-async function updateMenuItem(id: string, name: string): Promise<MenuItem | null> {
+async function updateMenuItem(id: string, name: string, price: number): Promise<MenuItem | null> {
   const list = await getJson<MenuItem[]>(MENU_KEY, []);
   const idx = list.findIndex((m) => m.id === id);
   if (idx === -1) return null;
-  list[idx] = { ...list[idx], name: name.trim() };
+  list[idx] = { ...list[idx], name: name.trim(), price: Number.isFinite(price) ? price : 0 };
   await setJson(MENU_KEY, list);
   return list[idx];
 }
@@ -137,6 +146,7 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
     record = {
       ...all[idx],
       menuItem: input.menuItem,
+      isLarge: input.isLarge,
       paymentMethod: input.paymentMethod,
       orderedVia: input.orderedVia,
       orderedAt: now,
@@ -149,6 +159,7 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
       orderedVia: input.orderedVia,
       name: input.name,
       menuItem: input.menuItem,
+      isLarge: input.isLarge,
       paymentMethod: input.paymentMethod,
       orderedAt: now,
     };
@@ -156,6 +167,21 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
   }
   await setJson(ORDERS_KEY, all);
   return record;
+}
+
+async function resetOrders(): Promise<void> {
+  await setJson(ORDERS_KEY, []);
+}
+
+async function getAdminName(): Promise<string> {
+  const name = await getJson<string | null>(ADMIN_NAME_KEY, null);
+  return name?.trim() || DEFAULT_ADMIN_NAME;
+}
+
+async function setAdminName(name: string): Promise<string> {
+  const trimmed = name.trim() || DEFAULT_ADMIN_NAME;
+  await setJson(ADMIN_NAME_KEY, trimmed);
+  return trimmed;
 }
 
 async function getImageInfo(): Promise<ImageInfo> {
@@ -190,6 +216,9 @@ export const redisStore: StoreBackend = {
   listOrdersByDate,
   listOrderDates,
   upsertOrder,
+  resetOrders,
+  getAdminName,
+  setAdminName,
   getImageInfo,
   saveImageFile,
   getImageFile,
