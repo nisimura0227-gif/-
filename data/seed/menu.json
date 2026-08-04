@@ -1,5 +1,5 @@
 [
-  { "id": "seed-menu-1", "name": "唐揚げ弁当", "createdAt": "2026-01-01T00:00:00.000Z" },
-  { "id": "seed-menu-2", "name": "生姜焼き弁当", "createdAt": "2026-01-01T00:00:00.000Z" },
-  { "id": "seed-menu-3", "name": "牛すじ弁当", "createdAt": "2026-01-01T00:00:00.000Z" }
+  { "id": "seed-menu-1", "name": "唐揚げ弁当", "price": 500, "createdAt": "2026-01-01T00:00:00.000Z" },
+  { "id": "seed-menu-2", "name": "生姜焼き弁当", "price": 500, "createdAt": "2026-01-01T00:00:00.000Z" },
+  { "id": "seed-menu-3", "name": "牛すじ弁当", "price": 550, "createdAt": "2026-01-01T00:00:00.000Z" }
 ]
