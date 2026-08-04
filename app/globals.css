@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  background-color: #ffffff;
+  color: #1f2937;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+input, select, textarea, button {
+  font-family: inherit;
+}
+
+/* iOSでのズーム防止のためフォントサイズは16px以上を維持 */
+select, input {
+  font-size: 17px;
+}
