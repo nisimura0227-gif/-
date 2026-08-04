@@ -21,12 +21,9 @@ export default async function TomorrowOrderPage() {
         </div>
       </header>
 
-      {names.length === 0 || menuItems.length === 0 ? (
+      {menuItems.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-gray-500">
-          <p>
-            {names.length === 0 ? "名前が登録されていません。" : ""}
-            {menuItems.length === 0 ? "メニューが登録されていません。" : ""}
-          </p>
+          <p>メニューが登録されていません。</p>
           <p className="text-sm">管理者に登録を依頼してください。</p>
         </div>
       ) : (
