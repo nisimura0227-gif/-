@@ -157,7 +157,7 @@ export default function OrderForm({
           <option value="">選択してください</option>
           {menuItems.map((m) => (
             <option key={m.id} value={m.name}>
-              {m.name}（¥{m.price.toLocaleString()}）
+              {m.name}（¥{(m.price ?? 0).toLocaleString()}）
             </option>
           ))}
         </select>
