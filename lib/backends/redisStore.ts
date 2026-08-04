@@ -91,7 +91,9 @@ async function deleteNameItem(id: string): Promise<void> {
 }
 
 async function listMenuItems(): Promise<MenuItem[]> {
-  return getJson<MenuItem[]>(MENU_KEY, []);
+  const list = await getJson<MenuItem[]>(MENU_KEY, []);
+  // price追加前に登録されたメニューにはpriceが無いため、表示時に落ちないよう補正する。
+  return list.map((m) => ({ ...m, price: Number.isFinite(m.price) ? m.price : 0 }));
 }
 
 async function addMenuItem(name: string, price: number): Promise<MenuItem> {
