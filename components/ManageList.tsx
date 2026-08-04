@@ -2,23 +2,27 @@
 
 import { useEffect, useState } from "react";
 
-type Item = { id: string; name: string };
+type Item = { id: string; name: string; price?: number };
 
 export default function ManageList({
   apiBase,
   title,
   itemLabel,
   addPlaceholder,
+  withPrice,
 }: {
   apiBase: string;
   title: string;
   itemLabel: string;
   addPlaceholder: string;
+  withPrice?: boolean;
 }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [newValue, setNewValue] = useState("");
+  const [newPrice, setNewPrice] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [editingPrice, setEditingPrice] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -33,18 +37,22 @@ export default function ManageList({
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!newValue.trim() || busy) return;
+    if (withPrice && newPrice.trim() === "") return;
     setBusy(true);
     setError("");
+    const body: Record<string, unknown> = { name: newValue.trim() };
+    if (withPrice) body.price = Number(newPrice);
     const res = await fetch(apiBase, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newValue.trim() }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) {
       setError(data.message || "追加に失敗しました。");
     } else {
       setNewValue("");
+      setNewPrice("");
       load();
     }
     setBusy(false);
@@ -52,12 +60,15 @@ export default function ManageList({
 
   async function handleSaveEdit(id: string) {
     if (!editingValue.trim() || busy) return;
+    if (withPrice && editingPrice.trim() === "") return;
     setBusy(true);
     setError("");
+    const body: Record<string, unknown> = { name: editingValue.trim() };
+    if (withPrice) body.price = Number(editingPrice);
     const res = await fetch(`${apiBase}/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editingValue.trim() }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -82,16 +93,27 @@ export default function ManageList({
     <div>
       <h2 className="mb-4 text-base font-bold text-brand-dark">{title}</h2>
 
-      <form onSubmit={handleAdd} className="mb-5 flex gap-2">
-        <input
-          value={newValue}
-          onChange={(e) => setNewValue(e.target.value)}
-          placeholder={addPlaceholder}
-          className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-3 py-3 text-base focus:border-brand focus:outline-none"
-        />
+      <form onSubmit={handleAdd} className="mb-5 flex flex-col gap-2">
+        <div className="flex gap-2">
+          <input
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+            placeholder={addPlaceholder}
+            className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-3 py-3 text-base focus:border-brand focus:outline-none"
+          />
+          {withPrice && (
+            <input
+              value={newPrice}
+              onChange={(e) => setNewPrice(e.target.value.replace(/[^0-9]/g, ""))}
+              placeholder="金額"
+              inputMode="numeric"
+              className="w-24 rounded-xl border-2 border-gray-300 bg-white px-3 py-3 text-base focus:border-brand focus:outline-none"
+            />
+          )}
+        </div>
         <button
           type="submit"
-          disabled={busy || !newValue.trim()}
+          disabled={busy || !newValue.trim() || (withPrice && newPrice.trim() === "")}
           className="rounded-xl bg-brand px-4 py-3 text-base font-bold text-white active:bg-brand-dark disabled:bg-gray-300"
         >
           追加
@@ -118,6 +140,14 @@ export default function ManageList({
                     autoFocus
                     className="flex-1 rounded-lg border-2 border-brand px-2 py-2 text-base focus:outline-none"
                   />
+                  {withPrice && (
+                    <input
+                      value={editingPrice}
+                      onChange={(e) => setEditingPrice(e.target.value.replace(/[^0-9]/g, ""))}
+                      inputMode="numeric"
+                      className="w-20 rounded-lg border-2 border-brand px-2 py-2 text-base focus:outline-none"
+                    />
+                  )}
                   <button
                     type="button"
                     onClick={() => handleSaveEdit(item.id)}
@@ -135,12 +165,18 @@ export default function ManageList({
                 </>
               ) : (
                 <>
-                  <span className="flex-1 text-base text-gray-800">{item.name}</span>
+                  <span className="flex-1 text-base text-gray-800">
+                    {item.name}
+                    {withPrice && typeof item.price === "number" ? (
+                      <span className="ml-2 text-sm text-gray-500">￥{item.price.toLocaleString()}</span>
+                    ) : null}
+                  </span>
                   <button
                     type="button"
                     onClick={() => {
                       setEditingId(item.id);
                       setEditingValue(item.name);
+                      setEditingPrice(typeof item.price === "number" ? String(item.price) : "");
                     }}
                     className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600"
                   >

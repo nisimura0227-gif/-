@@ -40,6 +40,7 @@ export default function OrderListSection({
                   <p className="font-bold text-gray-800">{o.name}</p>
                   <p className="text-gray-500">
                     {o.menuItem}
+                    {o.isLarge ? "（大盛り）" : ""}
                     {showPayment ? ` ・ ${o.paymentMethod}` : ""}
                   </p>
                 </div>
