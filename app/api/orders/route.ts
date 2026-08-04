@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listOrdersByDate, upsertOrder } from "@/lib/store";
+import { listOrdersByDate, upsertOrder, addName } from "@/lib/store";
 import { isAdminRequest } from "@/lib/authGuard";
 import { isTodayOrderClosed, todayStr, tomorrowStr } from "@/lib/date";
 
@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
   const orderedVia = body?.orderedVia === "tomorrow" ? "tomorrow" : "today";
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const menuItem = typeof body?.menuItem === "string" ? body.menuItem.trim() : "";
+  const isLarge = body?.isLarge === true;
   let paymentMethod = typeof body?.paymentMethod === "string" ? body.paymentMethod.trim() : "";
 
   if (!name || !menuItem) {
@@ -44,11 +45,15 @@ export async function POST(req: NextRequest) {
     paymentMethod = "手渡し";
   }
 
+  // 名前は自己登録できる。既に同名があれば addName 内で重複登録されない。
+  await addName(name);
+
   const order = await upsertOrder({
     deliveryDate: expectedDate,
     orderedVia,
     name,
     menuItem,
+    isLarge,
     paymentMethod,
   });
 
