@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Button from "@/components/ui/Button";
+import { Input, FieldLabel } from "@/components/ui/Field";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -35,28 +37,26 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col justify-center px-6 py-10">
-      <h1 className="mb-8 text-center text-xl font-bold text-brand-dark">🔒 管理者ログイン</h1>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+    <main className="flex min-h-screen flex-col justify-center bg-gray-50 px-6 py-10">
+      <div className="mb-8 flex flex-col items-center gap-3">
+        <img src="/icon.svg" alt="" width={56} height={56} className="rounded-2xl" />
+        <h1 className="text-xl font-bold text-brand-dark">管理者ログイン</h1>
+      </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div>
-          <label className="mb-2 block text-base font-bold text-gray-700">パスワード</label>
-          <input
+          <FieldLabel>パスワード</FieldLabel>
+          <Input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             autoFocus
-            className="w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-4 text-lg focus:border-brand focus:outline-none"
           />
         </div>
         {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={submitting || !password}
-          className="w-full rounded-2xl bg-brand px-6 py-5 text-xl font-bold text-white shadow-sm active:bg-brand-dark disabled:bg-gray-300"
-        >
+        <Button type="submit" size="lg" disabled={submitting || !password}>
           {submitting ? "確認中..." : "ログイン"}
-        </button>
+        </Button>
       </form>
       <Link href="/" className="mt-8 text-center text-sm text-gray-400 underline">
         トップページへ戻る
