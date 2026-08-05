@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { resizeImageFile, formatBytes } from "@/lib/resizeImage";
+import Button from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 
 export default function AdminImagePage() {
   const router = useRouter();
@@ -91,7 +93,7 @@ export default function AdminImagePage() {
     <div>
       <h2 className="mb-4 text-base font-bold text-brand-dark">🖼 今週のメニュー画像</h2>
 
-      <div className="mb-5 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+      <Card className="mb-5 bg-gray-50 text-sm text-gray-600">
         <p className="mb-1 font-bold text-gray-700">画像について</p>
         <ul className="list-inside list-disc space-y-0.5 text-xs leading-relaxed">
           <li>対応形式：JPG / PNG / WebP</li>
@@ -99,7 +101,7 @@ export default function AdminImagePage() {
           <li>容量制限：1.2MBまで</li>
           <li>大きい写真は自動で縮小するので、スマホで撮った写真をそのまま選んで大丈夫です</li>
         </ul>
-      </div>
+      </Card>
 
       <p className="mb-2 text-sm font-semibold text-gray-600">現在の画像</p>
       {current ? (
@@ -110,9 +112,9 @@ export default function AdminImagePage() {
           className="mb-5 w-full rounded-2xl border border-gray-200 object-cover"
         />
       ) : (
-        <div className="mb-5 flex aspect-[4/3] w-full items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-400">
+        <Card className="mb-5 flex aspect-[4/3] w-full items-center justify-center border-dashed text-sm text-gray-400">
           未登録
-        </div>
+        </Card>
       )}
 
       <p className="mb-2 text-sm font-semibold text-gray-600">新しい画像に差し替える</p>
@@ -142,14 +144,9 @@ export default function AdminImagePage() {
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={handleUpload}
-        disabled={!file || uploading || preparing}
-        className="w-full rounded-2xl bg-brand px-6 py-4 text-lg font-bold text-white shadow-sm active:bg-brand-dark disabled:bg-gray-300"
-      >
+      <Button type="button" size="lg" className="w-full" onClick={handleUpload} disabled={!file || uploading || preparing}>
         {uploading ? "アップロード中..." : "この画像に差し替える"}
-      </button>
+      </Button>
     </div>
   );
 }
