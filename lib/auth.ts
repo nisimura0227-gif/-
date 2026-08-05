@@ -5,7 +5,9 @@
 import { createHmac, timingSafeEqual } from "crypto";
 
 export const ADMIN_COOKIE = "bento_admin_session";
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12時間
+// 毎朝ログインし直す手間をなくすため長めに設定している。
+// 端末を紛失したときは管理画面の「ログアウト」か、パスワード変更で無効にできる。
+export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30日
 
 function getSecret(): string {
   return process.env.SESSION_SECRET || "insecure-default-secret-change-me";

@@ -3,6 +3,8 @@
 // Asia/Tokyo を明示して計算する。
 
 const TZ = "Asia/Tokyo";
+/** JSTはUTC+9固定（サマータイムが無い） */
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -76,15 +78,27 @@ export function formatDateJp(dateStr: string): string {
   return `${m}月${d}日(${w})`;
 }
 
-// 本日の受付締切（デフォルト 7:55 JST）を過ぎたかどうか
-export function isTodayOrderClosed(cutoffHour = 7, cutoffMinute = 55, now: Date = new Date()): boolean {
-  const p = getJstParts(now);
-  const nowMinutes = p.hour * 60 + p.minute;
-  const cutoffMinutes = cutoffHour * 60 + cutoffMinute;
-  return nowMinutes >= cutoffMinutes;
+/** 締切時刻の表示用ラベル（例: "7:55"） */
+export function formatCutoffLabel(hour: number, minute: number): string {
+  return `${hour}:${pad2(minute)}`;
 }
 
-export const ORDER_CUTOFF_LABEL = "7:55";
+/** 本日の受付締切（JST）を過ぎたかどうか */
+export function isTodayOrderClosed(cutoffHour: number, cutoffMinute: number, now: Date = new Date()): boolean {
+  const p = getJstParts(now);
+  return p.hour * 60 + p.minute >= cutoffHour * 60 + cutoffMinute;
+}
+
+/**
+ * 本日の締切時刻を絶対時刻（エポックミリ秒）で返す。
+ * 端末のタイムゾーン設定がずれていても残り時間を正しく計算できるようにするため、
+ * 画面側へはこの絶対時刻を渡して使う。
+ */
+export function cutoffEpochMs(cutoffHour: number, cutoffMinute: number, now: Date = new Date()): number {
+  const p = getJstParts(now);
+  // JST の Y/M/D H:M は UTC では9時間前
+  return Date.UTC(p.year, p.month - 1, p.day, cutoffHour, cutoffMinute) - JST_OFFSET_MS;
+}
 
 // dateStr（YYYY-MM-DD, JST基準）が「今日から数えて過去days日以内」かどうか
 export function isWithinLastDays(dateStr: string, days: number, now: Date = new Date()): boolean {

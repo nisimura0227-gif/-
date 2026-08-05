@@ -2,7 +2,9 @@
 // この形に合わせて実装する。
 
 export type NameItem = { id: string; name: string; createdAt: string };
+
 export type MenuItem = { id: string; name: string; price: number; createdAt: string };
+
 export type Order = {
   id: string;
   deliveryDate: string; // "YYYY-MM-DD" お弁当を食べる日
@@ -10,9 +12,16 @@ export type Order = {
   name: string;
   menuItem: string;
   isLarge: boolean; // 大盛り
+  /** 注文時点のメニュー単価。後でメニューの金額を変えても過去の注文がずれないよう記録しておく */
+  unitPrice: number;
+  /** 注文時点の大盛り追加料金。大盛りでなければ 0 */
+  largeExtra: number;
   paymentMethod: string;
+  /** 管理者が支払いを確認したかどうか */
+  isPaid: boolean;
   orderedAt: string; // ISO timestamp
 };
+
 export type ImageInfo = { ext: string; updatedAt: string } | null;
 
 export type UpsertOrderInput = {
@@ -21,8 +30,49 @@ export type UpsertOrderInput = {
   name: string;
   menuItem: string;
   isLarge: boolean;
+  unitPrice: number;
+  largeExtra: number;
   paymentMethod: string;
 };
+
+/** 管理画面から変更できる設定。まとめて1つのオブジェクトとして保存する。 */
+export type Settings = {
+  /** 現在の担当者名。一般ユーザー画面にも表示される */
+  adminName: string;
+  /** 受付締切（JST） */
+  cutoffHour: number;
+  cutoffMinute: number;
+  /** 大盛りの追加料金（円） */
+  largeExtraPrice: number;
+  /** お弁当屋の電話番号 */
+  shopPhone: string;
+};
+
+export const DEFAULT_SETTINGS: Settings = {
+  adminName: "管理者",
+  cutoffHour: 7,
+  cutoffMinute: 55,
+  largeExtraPrice: 100,
+  shopPhone: "070-6426-7880",
+};
+
+/** 保存されている設定に足りない項目があってもアプリが壊れないよう既定値で補う */
+export function normalizeSettings(raw: Partial<Settings> | null | undefined): Settings {
+  const s = raw ?? {};
+  const int = (v: unknown, fallback: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.trunc(n) : fallback;
+  };
+  const hour = Math.min(23, Math.max(0, int(s.cutoffHour, DEFAULT_SETTINGS.cutoffHour)));
+  const minute = Math.min(59, Math.max(0, int(s.cutoffMinute, DEFAULT_SETTINGS.cutoffMinute)));
+  return {
+    adminName: (typeof s.adminName === "string" && s.adminName.trim()) || DEFAULT_SETTINGS.adminName,
+    cutoffHour: hour,
+    cutoffMinute: minute,
+    largeExtraPrice: Math.max(0, int(s.largeExtraPrice, DEFAULT_SETTINGS.largeExtraPrice)),
+    shopPhone: (typeof s.shopPhone === "string" && s.shopPhone.trim()) || DEFAULT_SETTINGS.shopPhone,
+  };
+}
 
 export const IMAGE_MIME: Record<string, string> = {
   jpg: "image/jpeg",
@@ -39,7 +89,12 @@ export const PAYMENT_OPTIONS = [
   "手渡し",
 ];
 
-export const DEFAULT_ADMIN_NAME = "管理者";
+/** 注文1件の合計金額（単価 + 大盛り追加料金） */
+export function orderTotal(order: Pick<Order, "unitPrice" | "largeExtra">): number {
+  const unit = Number.isFinite(order.unitPrice) ? order.unitPrice : 0;
+  const extra = Number.isFinite(order.largeExtra) ? order.largeExtra : 0;
+  return unit + extra;
+}
 
 export interface StoreBackend {
   listNames(): Promise<NameItem[]>;
@@ -54,11 +109,13 @@ export interface StoreBackend {
 
   listOrdersByDate(deliveryDate: string): Promise<Order[]>;
   listOrderDates(): Promise<string[]>;
+  findOrder(deliveryDate: string, name: string): Promise<Order | null>;
   upsertOrder(input: UpsertOrderInput): Promise<Order>;
-  resetOrders(): Promise<void>;
+  deleteOrder(id: string): Promise<void>;
+  setOrderPaid(id: string, isPaid: boolean): Promise<Order | null>;
 
-  getAdminName(): Promise<string>;
-  setAdminName(name: string): Promise<string>;
+  getSettings(): Promise<Settings>;
+  saveSettings(patch: Partial<Settings>): Promise<Settings>;
 
   getImageInfo(): Promise<ImageInfo>;
   saveImageFile(buffer: Buffer, ext: string): Promise<ImageInfo>;
