@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { formatDateJp, formatTimeHm } from "@/lib/date";
 import { orderTotal } from "@/lib/storeTypes";
 import type { Order } from "@/lib/storeTypes";
+import { Card } from "@/components/ui/Card";
+import { Select } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
 
 function yen(n: number): string {
   return `¥${n.toLocaleString()}`;
@@ -78,25 +81,21 @@ export default function AdminHistoryPage() {
   return (
     <div>
       <h2 className="mb-3 text-base font-bold text-brand-dark">🗂 注文履歴</h2>
-      <select
-        value={selected}
-        onChange={(e) => setSelected(e.target.value)}
-        className="mb-4 w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-base focus:border-brand focus:outline-none"
-      >
+      <Select value={selected} onChange={(e) => setSelected(e.target.value)} className="mb-4">
         {dates.map((d) => (
           <option key={d} value={d}>
             {formatDateJp(d)}（{d}）
           </option>
         ))}
-      </select>
+      </Select>
 
       {error && <p className="mb-3 rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</p>}
 
       {orders && orders.length > 0 ? (
         <>
-          <ul className="mb-4 divide-y divide-gray-100 rounded-xl border border-gray-100">
+          <Card className="mb-4 divide-y divide-gray-100 p-0">
             {orders.map((o) => (
-              <li key={o.id} className="flex items-start justify-between gap-2 px-3 py-3">
+              <div key={o.id} className="flex items-start justify-between gap-2 px-3.5 py-3">
                 <div className="min-w-0">
                   <p className="font-bold text-gray-800">
                     {o.name}
@@ -110,18 +109,20 @@ export default function AdminHistoryPage() {
                     {formatTimeHm(new Date(o.orderedAt))} ・ {yen(orderTotal(o))}
                   </p>
                 </div>
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="danger"
+                  className="flex-shrink-0"
                   onClick={() => handleDelete(o)}
                   disabled={busyId === o.id}
-                  className="flex-shrink-0 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-500 active:bg-red-100 disabled:opacity-50"
                 >
                   {busyId === o.id ? "削除中" : "削除"}
-                </button>
-              </li>
+                </Button>
+              </div>
             ))}
-          </ul>
-          <div className="rounded-xl bg-brand-light px-4 py-3">
+          </Card>
+          <Card className="bg-brand-light">
             <p className="mb-1 text-xs font-bold text-brand-dark">自動集計</p>
             <ul className="text-sm text-gray-700">
               {Array.from(counts.entries()).map(([menuItem, count]) => (
@@ -131,16 +132,16 @@ export default function AdminHistoryPage() {
                 </li>
               ))}
             </ul>
-            <p className="mt-2 flex justify-between border-t border-brand/30 pt-2 text-sm font-bold text-brand-dark">
+            <div className="mt-2 flex justify-between border-t border-brand/30 pt-2 text-sm font-bold text-brand-dark">
               <span>合計</span>
               <span>
                 {orders.length}個 / {yen(totalAmount)}
               </span>
-            </p>
-          </div>
+            </div>
+          </Card>
         </>
       ) : (
-        <p className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-400">この日の注文はありません。</p>
+        <Card className="border-dashed text-center text-sm text-gray-400">この日の注文はありません。</Card>
       )}
     </div>
   );
