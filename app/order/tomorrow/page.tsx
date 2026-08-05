@@ -1,18 +1,23 @@
 import Link from "next/link";
-import { listNames, listMenuItems } from "@/lib/store";
+import { listNames, listMenuItems, getSettings } from "@/lib/store";
 import { tomorrowStr, formatDateJp } from "@/lib/date";
 import OrderForm from "@/components/OrderForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function TomorrowOrderPage() {
-  const dateLabel = formatDateJp(tomorrowStr());
-  const [names, menuItems] = await Promise.all([listNames(), listMenuItems()]);
+  const [names, menuItems, settings] = await Promise.all([listNames(), listMenuItems(), getSettings()]);
+
+  const now = new Date();
+  const dateLabel = formatDateJp(tomorrowStr(now));
 
   return (
     <main className="flex min-h-screen flex-col px-4 py-4">
       <header className="mb-4 flex items-center gap-3">
-        <Link href="/" className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-xl active:bg-gray-200">
+        <Link
+          href="/"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-xl active:bg-gray-200"
+        >
           ←
         </Link>
         <div>
@@ -27,7 +32,15 @@ export default async function TomorrowOrderPage() {
           <p className="text-sm">管理者に登録を依頼してください。</p>
         </div>
       ) : (
-        <OrderForm orderedVia="tomorrow" names={names} menuItems={menuItems} fixedPayment="手渡し" />
+        <OrderForm
+          orderedVia="tomorrow"
+          names={names}
+          menuItems={menuItems}
+          fixedPayment="手渡し"
+          largeExtraPrice={settings.largeExtraPrice}
+          cutoffAtMs={0}
+          serverNowMs={now.getTime()}
+        />
       )}
     </main>
   );
