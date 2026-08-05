@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { PAYMENT_OPTIONS } from "@/lib/storeTypes";
 import { loadSavedName, saveName } from "@/lib/savedName";
 import { useCountdown } from "./useCountdown";
+import Button from "./ui/Button";
+import { Card, CardSection } from "./ui/Card";
+import { Badge } from "./ui/Badge";
+import { Input, Select, FieldLabel, HelpText } from "./ui/Field";
 
 type NameLite = { id: string; name: string };
 type MenuLite = { id: string; name: string; price: number };
@@ -171,74 +175,65 @@ export default function OrderForm({
   if (phase === "done" && myOrder) {
     return (
       <div className="flex flex-col gap-5 py-4">
-        <div className="rounded-2xl border-2 border-brand bg-brand-light px-4 py-5 text-center">
+        <Card className="border-2 border-brand bg-brand-light px-4 py-6 text-center">
           <p className="text-3xl">✅</p>
           <p className="mt-2 text-lg font-bold text-brand-dark">
             {orderedVia === "today" ? "本日の注文は完了しています" : "明日の注文は完了しています"}
           </p>
-        </div>
+        </Card>
 
-        <dl className="divide-y divide-gray-100 rounded-2xl border border-gray-200 text-base">
-          <div className="flex items-center justify-between px-4 py-3">
-            <dt className="text-gray-500">名前</dt>
-            <dd className="font-bold text-gray-800">{name}</dd>
+        <Card className="divide-y divide-gray-100 p-0 text-base">
+          <div className="flex items-center justify-between px-4 py-3.5">
+            <span className="text-gray-500">名前</span>
+            <span className="font-bold text-gray-800">{name}</span>
           </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <dt className="text-gray-500">お弁当</dt>
-            <dd className="font-bold text-gray-800">{myOrder.menuItem}</dd>
+          <div className="flex items-center justify-between px-4 py-3.5">
+            <span className="text-gray-500">お弁当</span>
+            <span className="font-bold text-gray-800">{myOrder.menuItem}</span>
           </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <dt className="text-gray-500">大盛り</dt>
-            <dd className="font-bold text-gray-800">{myOrder.isLarge ? "あり" : "なし"}</dd>
+          <div className="flex items-center justify-between px-4 py-3.5">
+            <span className="text-gray-500">大盛り</span>
+            <span className="font-bold text-gray-800">{myOrder.isLarge ? "あり" : "なし"}</span>
           </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <dt className="text-gray-500">支払い方法</dt>
-            <dd className="text-right font-bold text-gray-800">{myOrder.paymentMethod}</dd>
+          <div className="flex items-center justify-between px-4 py-3.5">
+            <span className="text-gray-500">支払い方法</span>
+            <span className="text-right font-bold text-gray-800">{myOrder.paymentMethod}</span>
           </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <dt className="text-gray-500">金額</dt>
-            <dd className="font-bold text-gray-800">{yen(myOrder.total)}</dd>
+          <div className="flex items-center justify-between px-4 py-3.5">
+            <span className="text-gray-500">金額</span>
+            <span className="font-bold text-gray-800">{yen(myOrder.total)}</span>
           </div>
-          <div className="flex items-center justify-between px-4 py-3">
-            <dt className="text-gray-500">支払い状況</dt>
-            <dd>
-              {myOrder.isPaid ? (
-                <span className="rounded-full bg-brand-light px-3 py-1 text-sm font-bold text-brand-dark">
-                  ✅ 支払い済み
-                </span>
-              ) : (
-                <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-700">
-                  ⏳ 確認中
-                </span>
-              )}
-            </dd>
+          <div className="flex items-center justify-between px-4 py-3.5">
+            <span className="text-gray-500">支払い状況</span>
+            {myOrder.isPaid ? (
+              <Badge variant="success">✅ 支払い済み</Badge>
+            ) : (
+              <Badge variant="warning">⏳ 確認中</Badge>
+            )}
           </div>
-        </dl>
+        </Card>
 
         {closed ? (
           <p className="rounded-xl bg-gray-50 px-4 py-3 text-center text-sm text-gray-500">
             受付時間を過ぎたため、変更できません。
           </p>
         ) : (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="lg"
             onClick={() => {
               setPhase("form");
               setError("");
             }}
-            className="w-full rounded-2xl border-2 border-brand bg-white px-6 py-4 text-lg font-bold text-brand-dark active:bg-brand-light"
           >
             ✏️ 注文内容を変更する
-          </button>
+          </Button>
         )}
 
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          className="w-full rounded-2xl bg-brand px-6 py-4 text-lg font-bold text-white active:bg-brand-dark"
-        >
+        <Button type="button" variant="primary" size="lg" onClick={() => router.push("/")}>
           トップへ戻る
-        </button>
+        </Button>
       </div>
     );
   }
@@ -249,13 +244,9 @@ export default function OrderForm({
       <div className="flex flex-col items-center gap-4 py-14 text-center">
         <p className="text-4xl">🔴</p>
         <p className="text-xl font-bold text-gray-700">本日の受付は終了しました</p>
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          className="mt-4 w-full rounded-2xl bg-gray-200 px-6 py-4 text-base font-bold text-gray-700 active:bg-gray-300"
-        >
+        <Button type="button" variant="muted" size="lg" className="mt-4 w-full" onClick={() => router.push("/")}>
           トップへ戻る
-        </button>
+        </Button>
       </div>
     );
   }
@@ -264,67 +255,54 @@ export default function OrderForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       {orderedVia === "today" && (
-        <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
+        <Card className="border-2 border-amber-200 bg-amber-50 text-sm leading-relaxed text-amber-800">
           <p>⏰ 受付は締切時刻までです。</p>
           <p>💴「手渡し」を選んだ方は、締切までに担当者へお支払いください。</p>
-        </div>
+        </Card>
       )}
 
       <div>
-        <label className="mb-2 block text-base font-bold text-gray-700">名前</label>
+        <FieldLabel>名前</FieldLabel>
         {name && !editingName ? (
           <div className="flex items-center justify-between rounded-xl border-2 border-gray-300 bg-gray-50 px-4 py-4">
             <span className="text-lg font-bold text-gray-800">{name}</span>
-            <button
-              type="button"
-              onClick={() => setEditingName(true)}
-              className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-gray-600 active:bg-gray-100"
-            >
+            <Button type="button" variant="muted" size="sm" onClick={() => setEditingName(true)}>
               変更
-            </button>
+            </Button>
           </div>
         ) : (
           <>
-            <input
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               list="names-list"
               placeholder="名前を選ぶか、新しく入力してください"
               maxLength={20}
               required
-              className="w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-4 text-lg focus:border-brand focus:outline-none"
+              className="text-lg"
             />
             <datalist id="names-list">
               {names.map((n) => (
                 <option key={n.id} value={n.name} />
               ))}
             </datalist>
-            <p className="mt-1 text-xs text-gray-400">
-              入力した名前はこの端末に保存され、次回から自動で入ります。
-            </p>
+            <HelpText>入力した名前はこの端末に保存され、次回から自動で入ります。</HelpText>
           </>
         )}
       </div>
 
       <div>
-        <label className="mb-2 block text-base font-bold text-gray-700">
-          {orderedVia === "today" ? "今日のメニュー" : "明日のメニュー"}
-        </label>
-        <select
-          value={menuItem}
-          onChange={(e) => setMenuItem(e.target.value)}
-          required
-          className="w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-4 text-lg focus:border-brand focus:outline-none"
-        >
+        <FieldLabel>{orderedVia === "today" ? "今日のメニュー" : "明日のメニュー"}</FieldLabel>
+        <Select value={menuItem} onChange={(e) => setMenuItem(e.target.value)} required className="text-lg">
           <option value="">選択してください</option>
           {menuItems.map((m) => (
             <option key={m.id} value={m.name}>
               {m.name}（{yen(m.price ?? 0)}）
             </option>
           ))}
-        </select>
+        </Select>
 
-        <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-300 px-4 py-3 text-base">
+        <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-xl border-2 border-gray-300 px-4 py-3.5 text-base">
           <input
             type="checkbox"
             checked={isLarge}
@@ -342,7 +320,7 @@ export default function OrderForm({
       </div>
 
       <div>
-        <label className="mb-2 block text-base font-bold text-gray-700">支払い方法</label>
+        <FieldLabel>支払い方法</FieldLabel>
         {fixedPayment ? (
           <div className="rounded-xl border-2 border-brand bg-brand-light px-4 py-4 text-lg font-semibold text-brand-dark">
             {fixedPayment}
@@ -354,7 +332,7 @@ export default function OrderForm({
               return (
                 <label
                   key={opt}
-                  className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-4 text-lg ${
+                  className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-4 text-lg transition-colors ${
                     payment === opt ? "border-brand bg-brand-light font-bold text-brand-dark" : "border-gray-300"
                   }`}
                 >
@@ -382,22 +360,14 @@ export default function OrderForm({
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={!canSubmit}
-        className="mt-2 w-full rounded-2xl bg-brand px-6 py-5 text-xl font-bold text-white shadow-sm active:bg-brand-dark disabled:bg-gray-300"
-      >
+      <Button type="submit" variant="accent" size="lg" disabled={!canSubmit} className="mt-2">
         {submitting ? "送信中..." : myOrder ? "この内容に変更する" : "注文する"}
-      </button>
+      </Button>
 
       {myOrder && (
-        <button
-          type="button"
-          onClick={() => setPhase("done")}
-          className="w-full rounded-2xl bg-gray-100 px-6 py-3 text-base font-semibold text-gray-600 active:bg-gray-200"
-        >
+        <Button type="button" variant="muted" onClick={() => setPhase("done")}>
           変更をやめる
-        </button>
+        </Button>
       )}
     </form>
   );

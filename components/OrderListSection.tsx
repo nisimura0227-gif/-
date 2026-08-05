@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Order } from "@/lib/storeTypes";
 import { orderTotal } from "@/lib/storeTypes";
 import { formatTimeHm } from "@/lib/date";
+import { Card } from "./ui/Card";
+import { Badge } from "./ui/Badge";
 
 function yen(n: number): string {
   return `¥${n.toLocaleString()}`;
@@ -68,14 +70,14 @@ export default function OrderListSection({
       {error && <p className="mb-3 rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</p>}
 
       {orders.length === 0 ? (
-        <p className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-400">まだ注文はありません。</p>
+        <Card className="border-dashed text-center text-sm text-gray-400">まだ注文はありません。</Card>
       ) : (
         <>
-          <ul className="mb-4 divide-y divide-gray-100 rounded-xl border border-gray-100">
+          <Card className="mb-4 divide-y divide-gray-100 p-0">
             {orders.map((o) => {
               const paid = isPaidOf(o);
               return (
-                <li key={o.id} className="px-3 py-3">
+                <div key={o.id} className="px-4 py-3.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-bold text-gray-800">{o.name}</p>
@@ -92,7 +94,7 @@ export default function OrderListSection({
                   </div>
 
                   <label
-                    className={`mt-2 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                    className={`mt-2.5 flex cursor-pointer items-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm transition-colors ${
                       paid ? "border-brand bg-brand-light font-bold text-brand-dark" : "border-gray-200 text-gray-500"
                     }`}
                   >
@@ -105,12 +107,12 @@ export default function OrderListSection({
                     />
                     {paid ? "✅ 支払い済み" : "⏳ 未確認"}
                   </label>
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </Card>
 
-          <div className="rounded-xl bg-brand-light px-4 py-3">
+          <Card className="bg-brand-light">
             <p className="mb-1 text-xs font-bold text-brand-dark">自動集計</p>
             <ul className="text-sm text-gray-700">
               {Array.from(counts.entries()).map(([menuItem, count]) => (
@@ -120,19 +122,18 @@ export default function OrderListSection({
                 </li>
               ))}
             </ul>
-            <div className="mt-2 border-t border-brand/30 pt-2 text-sm font-bold text-brand-dark">
-              <p className="flex justify-between">
-                <span>合計</span>
-                <span>
-                  {orders.length}個 / {yen(totalAmount)}
-                </span>
-              </p>
-              <p className="mt-1 flex justify-between text-xs font-semibold text-amber-700">
-                <span>支払い未確認</span>
-                <span>{unpaidCount}人</span>
-              </p>
+            <div className="mt-2 flex items-center justify-between border-t border-brand/30 pt-2 text-sm font-bold text-brand-dark">
+              <span>合計</span>
+              <span>
+                {orders.length}個 / {yen(totalAmount)}
+              </span>
             </div>
-          </div>
+            {unpaidCount > 0 && (
+              <div className="mt-2 flex justify-end">
+                <Badge variant="warning">支払い未確認 {unpaidCount}人</Badge>
+              </div>
+            )}
+          </Card>
         </>
       )}
     </section>

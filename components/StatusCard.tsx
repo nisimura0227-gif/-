@@ -1,6 +1,8 @@
 "use client";
 
 import { useCountdown } from "./useCountdown";
+import { Card, CardSection } from "./ui/Card";
+import { Badge } from "./ui/Badge";
 
 /**
  * トップページ上部の情報カード。
@@ -22,8 +24,8 @@ export default function StatusCard({
   const { closed, hours, minutes } = useCountdown(cutoffAtMs, serverNowMs);
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-      <dl className="flex flex-col gap-2 text-sm">
+    <Card className="border-2 border-gray-200 p-5">
+      <dl className="flex flex-col gap-3 text-base">
         <div className="flex items-center justify-between">
           <dt className="text-gray-500">📅 本日</dt>
           <dd className="font-bold text-gray-800">{dateLabel}</dd>
@@ -32,28 +34,28 @@ export default function StatusCard({
           <dt className="text-gray-500">👷 担当者</dt>
           <dd className="font-bold text-gray-800">{adminName}</dd>
         </div>
-        <div className="flex items-center justify-between border-t border-gray-100 pt-2">
+        <CardSection className="flex items-center justify-between">
           <dt className="text-gray-500">⏰ 受付終了まで</dt>
           <dd>
             {closed ? (
-              <span className="font-bold text-red-600">受付終了</span>
+              <Badge variant="danger">受付終了</Badge>
             ) : (
-              <span className="font-bold text-brand-dark">
+              <span className="text-lg font-bold text-brand-dark">
                 あと{hours > 0 ? `${hours}時間` : ""}
                 {minutes}分
               </span>
             )}
           </dd>
-        </div>
+        </CardSection>
       </dl>
 
       {closed ? (
-        <p className="mt-3 rounded-xl bg-red-50 px-3 py-2.5 text-center text-sm font-bold text-red-600">
+        <p className="mt-4 rounded-xl bg-red-50 px-3 py-3 text-center text-sm font-bold text-red-600">
           🔴 本日の受付は終了しました
         </p>
       ) : (
         <p className="mt-2 text-right text-xs text-gray-400">受付は {cutoffLabel} まで</p>
       )}
-    </section>
+    </Card>
   );
 }
