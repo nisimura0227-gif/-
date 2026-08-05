@@ -1,43 +1,71 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { formatDateJp, formatTimeHm } from "@/lib/date";
+import { orderTotal } from "@/lib/storeTypes";
+import type { Order } from "@/lib/storeTypes";
 
-type Order = {
-  id: string;
-  deliveryDate: string;
-  name: string;
-  menuItem: string;
-  isLarge: boolean;
-  paymentMethod: string;
-  orderedAt: string;
-};
+function yen(n: number): string {
+  return `¥${n.toLocaleString()}`;
+}
 
 export default function AdminHistoryPage() {
   const [dates, setDates] = useState<string[]>([]);
   const [selected, setSelected] = useState("");
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    fetch("/api/orders/dates")
-      .then((r) => r.json())
-      .then((data) => {
-        setDates(data.dates || []);
-        if (data.dates?.length) setSelected(data.dates[0]);
-        setLoading(false);
-      });
+  const loadDates = useCallback(async () => {
+    try {
+      const res = await fetch("/api/orders/dates", { cache: "no-store" });
+      const data = await res.json();
+      const list: string[] = data.dates || [];
+      setDates(list);
+      setSelected((prev) => (prev && list.includes(prev) ? prev : list[0] ?? ""));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadOrders = useCallback(async (date: string) => {
+    if (!date) {
+      setOrders([]);
+      return;
+    }
+    const res = await fetch(`/api/orders?date=${encodeURIComponent(date)}`, { cache: "no-store" });
+    const data = await res.json();
+    setOrders(data.orders || []);
   }, []);
 
   useEffect(() => {
-    if (!selected) return;
-    fetch(`/api/orders?date=${selected}`)
-      .then((r) => r.json())
-      .then((data) => setOrders(data.orders || []));
-  }, [selected]);
+    loadDates();
+  }, [loadDates]);
+
+  useEffect(() => {
+    loadOrders(selected);
+  }, [selected, loadOrders]);
+
+  async function handleDelete(order: Order) {
+    if (!confirm(`${order.name} さんの注文（${order.menuItem}）を削除します。よろしいですか？`)) return;
+    setBusyId(order.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/orders/${order.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("failed");
+      await loadOrders(selected);
+      await loadDates();
+    } catch {
+      setError("削除に失敗しました。通信環境を確認してもう一度お試しください。");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const counts = new Map<string, number>();
   (orders ?? []).forEach((o) => counts.set(o.menuItem, (counts.get(o.menuItem) ?? 0) + 1));
+  const totalAmount = (orders ?? []).reduce((sum, o) => sum + orderTotal(o), 0);
 
   if (loading) {
     return <p className="py-10 text-center text-sm text-gray-400">読み込み中...</p>;
@@ -62,19 +90,34 @@ export default function AdminHistoryPage() {
         ))}
       </select>
 
+      {error && <p className="mb-3 rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</p>}
+
       {orders && orders.length > 0 ? (
         <>
           <ul className="mb-4 divide-y divide-gray-100 rounded-xl border border-gray-100">
             {orders.map((o) => (
-              <li key={o.id} className="flex items-center justify-between px-3 py-2.5 text-sm">
-                <div>
-                  <p className="font-bold text-gray-800">{o.name}</p>
-                  <p className="text-gray-500">
+              <li key={o.id} className="flex items-start justify-between gap-2 px-3 py-3">
+                <div className="min-w-0">
+                  <p className="font-bold text-gray-800">
+                    {o.name}
+                    {o.isPaid && <span className="ml-2 text-xs font-normal text-brand-dark">✅ 支払い済み</span>}
+                  </p>
+                  <p className="text-sm text-gray-500">
                     {o.menuItem}
                     {o.isLarge ? "（大盛り）" : ""} ・ {o.paymentMethod}
                   </p>
+                  <p className="text-xs text-gray-400">
+                    {formatTimeHm(new Date(o.orderedAt))} ・ {yen(orderTotal(o))}
+                  </p>
                 </div>
-                <span className="text-xs text-gray-400">{formatTimeHm(new Date(o.orderedAt))}</span>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(o)}
+                  disabled={busyId === o.id}
+                  className="flex-shrink-0 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-500 active:bg-red-100 disabled:opacity-50"
+                >
+                  {busyId === o.id ? "削除中" : "削除"}
+                </button>
               </li>
             ))}
           </ul>
@@ -88,8 +131,11 @@ export default function AdminHistoryPage() {
                 </li>
               ))}
             </ul>
-            <p className="mt-2 border-t border-brand/30 pt-2 text-right text-sm font-bold text-brand-dark">
-              合計 {orders.length}個
+            <p className="mt-2 flex justify-between border-t border-brand/30 pt-2 text-sm font-bold text-brand-dark">
+              <span>合計</span>
+              <span>
+                {orders.length}個 / {yen(totalAmount)}
+              </span>
             </p>
           </div>
         </>
