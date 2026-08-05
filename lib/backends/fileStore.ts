@@ -1,7 +1,7 @@
 // ローカル動作確認用のJSONファイルバックエンド。
-// UPSTASH_REDIS_REST_URL が設定されていないとき（ローカル開発時など）に使われる。
-// 本番でVercel（サーバーレス）にデプロイする場合はファイル書き込みが
-// 永続化されないため、redisStore.ts（Upstash Redis）が自動的に使われる。
+// Upstash Redis の環境変数が設定されていないとき（ローカル開発時など）に使われる。
+// 本番のVercel（サーバーレス）ではファイル書き込みが永続化されないため、
+// redisStore.ts が自動的に使われる。
 
 import fs from "fs/promises";
 import path from "path";
@@ -12,9 +12,10 @@ import type {
   Order,
   ImageInfo,
   UpsertOrderInput,
+  Settings,
   StoreBackend,
 } from "../storeTypes";
-import { IMAGE_MIME, DEFAULT_ADMIN_NAME } from "../storeTypes";
+import { IMAGE_MIME, normalizeSettings } from "../storeTypes";
 
 const DB_DIR = process.env.DATA_DIR ? path.join(process.env.DATA_DIR, "db") : path.join(process.cwd(), "data", "db");
 const SEED_DIR = path.join(process.cwd(), "data", "seed");
@@ -70,6 +71,8 @@ async function writeJson<T>(file: string, data: T): Promise<void> {
   await fs.writeFile(dbPath, JSON.stringify(data, null, 2), "utf-8");
 }
 
+/* ---------------- 名前 ---------------- */
+
 async function listNames(): Promise<NameItem[]> {
   return readJson<NameItem[]>("names.json", []);
 }
@@ -108,9 +111,11 @@ async function deleteNameItem(id: string): Promise<void> {
   });
 }
 
+/* ---------------- メニュー ---------------- */
+
 async function listMenuItems(): Promise<MenuItem[]> {
   const list = await readJson<MenuItem[]>("menu.json", []);
-  // price追加前に登録されたメニューにはpriceが無いため、表示時に落ちないよう補正する。
+  // 金額項目を追加する前に登録されたメニューには price が無いため補正する。
   return list.map((m) => ({ ...m, price: Number.isFinite(m.price) ? m.price : 0 }));
 }
 
@@ -150,30 +155,59 @@ async function deleteMenuItem(id: string): Promise<void> {
   });
 }
 
-async function listOrdersByDate(deliveryDate: string): Promise<Order[]> {
+/* ---------------- 注文 ---------------- */
+
+// 金額・支払い状況の項目を追加する前に保存された注文でも壊れないようにする。
+function normalizeOrder(o: Order): Order {
+  return {
+    ...o,
+    isLarge: o.isLarge === true,
+    unitPrice: Number.isFinite(o.unitPrice) ? o.unitPrice : 0,
+    largeExtra: Number.isFinite(o.largeExtra) ? o.largeExtra : 0,
+    isPaid: o.isPaid === true,
+  };
+}
+
+async function readOrders(): Promise<Order[]> {
   const all = await readJson<Order[]>("orders.json", []);
+  return all.map(normalizeOrder);
+}
+
+async function listOrdersByDate(deliveryDate: string): Promise<Order[]> {
+  const all = await readOrders();
   return all
     .filter((o) => o.deliveryDate === deliveryDate)
     .sort((a, b) => a.orderedAt.localeCompare(b.orderedAt));
 }
 
 async function listOrderDates(): Promise<string[]> {
-  const all = await readJson<Order[]>("orders.json", []);
+  const all = await readOrders();
   const set = new Set(all.map((o) => o.deliveryDate));
   return Array.from(set).sort((a, b) => b.localeCompare(a));
 }
 
+async function findOrder(deliveryDate: string, name: string): Promise<Order | null> {
+  const all = await readOrders();
+  const trimmed = name.trim().toLowerCase();
+  return (
+    all.find((o) => o.deliveryDate === deliveryDate && o.name.trim().toLowerCase() === trimmed) ?? null
+  );
+}
+
 async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
   return withLock("orders.json", async () => {
-    const all = await readJson<Order[]>("orders.json", []);
+    const all = await readOrders();
     const now = new Date().toISOString();
     const idx = all.findIndex((o) => o.deliveryDate === input.deliveryDate && o.name === input.name);
     let record: Order;
     if (idx !== -1) {
+      // 内容を変更しても、管理者が確認済みにした支払い状況は引き継ぐ
       record = {
         ...all[idx],
         menuItem: input.menuItem,
         isLarge: input.isLarge,
+        unitPrice: input.unitPrice,
+        largeExtra: input.largeExtra,
         paymentMethod: input.paymentMethod,
         orderedVia: input.orderedVia,
         orderedAt: now,
@@ -187,7 +221,10 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
         name: input.name,
         menuItem: input.menuItem,
         isLarge: input.isLarge,
+        unitPrice: input.unitPrice,
+        largeExtra: input.largeExtra,
         paymentMethod: input.paymentMethod,
+        isPaid: false,
         orderedAt: now,
       };
       all.push(record);
@@ -197,24 +234,44 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
   });
 }
 
-async function resetOrders(): Promise<void> {
+async function deleteOrder(id: string): Promise<void> {
   return withLock("orders.json", async () => {
-    await writeJson("orders.json", []);
+    const all = await readOrders();
+    await writeJson(
+      "orders.json",
+      all.filter((o) => o.id !== id)
+    );
   });
 }
 
-async function getAdminName(): Promise<string> {
-  const data = await readJson<{ name: string } | null>("adminName.json", null);
-  return data?.name?.trim() || DEFAULT_ADMIN_NAME;
-}
-
-async function setAdminName(name: string): Promise<string> {
-  return withLock("adminName.json", async () => {
-    const trimmed = name.trim() || DEFAULT_ADMIN_NAME;
-    await writeJson("adminName.json", { name: trimmed });
-    return trimmed;
+async function setOrderPaid(id: string, isPaid: boolean): Promise<Order | null> {
+  return withLock("orders.json", async () => {
+    const all = await readOrders();
+    const idx = all.findIndex((o) => o.id === id);
+    if (idx === -1) return null;
+    all[idx] = { ...all[idx], isPaid };
+    await writeJson("orders.json", all);
+    return all[idx];
   });
 }
+
+/* ---------------- 設定 ---------------- */
+
+async function getSettings(): Promise<Settings> {
+  const raw = await readJson<Partial<Settings> | null>("settings.json", null);
+  return normalizeSettings(raw);
+}
+
+async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
+  return withLock("settings.json", async () => {
+    const raw = await readJson<Partial<Settings> | null>("settings.json", null);
+    const next = normalizeSettings({ ...normalizeSettings(raw), ...patch });
+    await writeJson("settings.json", next);
+    return next;
+  });
+}
+
+/* ---------------- 画像 ---------------- */
 
 async function getImageInfo(): Promise<ImageInfo> {
   return readJson<ImageInfo>("image.json", null);
@@ -256,10 +313,12 @@ export const fileStore: StoreBackend = {
   deleteMenuItem,
   listOrdersByDate,
   listOrderDates,
+  findOrder,
   upsertOrder,
-  resetOrders,
-  getAdminName,
-  setAdminName,
+  deleteOrder,
+  setOrderPaid,
+  getSettings,
+  saveSettings,
   getImageInfo,
   saveImageFile,
   getImageFile,

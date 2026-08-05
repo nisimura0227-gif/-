@@ -1,11 +1,9 @@
 // 本番（Vercelなどのサーバーレス環境）向けのRedisバックエンド。
 // UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN が設定されているときに使われる。
-// Upstash Redis（Vercel Marketplaceから無料枠で追加可能）を想定。
 //
-// 名前・メニュー・注文はJSON配列としてそのままキーに保存し、
-// 画像はサイズが小さい（数百KB〜数MB）ことを前提にBase64文字列として
-// 同じRedisに保存する（Vercelの関数からファイルシステムへの書き込みが
-// 永続化されないため、画像専用の別ストレージを使わずに済む構成にしている）。
+// 名前・メニュー・注文・設定はJSONとしてそのままキーに保存し、
+// 画像はBase64文字列として同じRedisに保存する（Vercelの関数から
+// ファイルシステムへ書き込んでも永続化されないため）。
 
 import { Redis } from "@upstash/redis";
 import { randomUUID } from "crypto";
@@ -15,16 +13,17 @@ import type {
   Order,
   ImageInfo,
   UpsertOrderInput,
+  Settings,
   StoreBackend,
 } from "../storeTypes";
-import { IMAGE_MIME, DEFAULT_ADMIN_NAME } from "../storeTypes";
+import { IMAGE_MIME, normalizeSettings } from "../storeTypes";
 
 const NAMES_KEY = "bento:names";
 const MENU_KEY = "bento:menu";
 const ORDERS_KEY = "bento:orders";
 const IMAGE_META_KEY = "bento:image:meta";
 const IMAGE_DATA_KEY = "bento:image:data";
-const ADMIN_NAME_KEY = "bento:adminName";
+const SETTINGS_KEY = "bento:settings";
 
 let client: Redis | null = null;
 function redis(): Redis {
@@ -38,9 +37,11 @@ function redis(): Redis {
   return client;
 }
 
-// Upstash Redis SDKのバージョンによって、保存した値がSDK側で自動的に
-// JSONパースされて返る場合と、文字列のまま返る場合があるため、
-// どちらのケースでも安全に扱えるようにしている。
+// Upstash Redis SDKは、保存された値が有効なJSONならSDK側で自動的にパースして返す。
+// そのため JSON.stringify した文字列（例: "abc"）は、読み出し時にはすでに
+// 素の文字列 abc へ戻っている。これをもう一度 JSON.parse すると失敗するため、
+// パースに失敗した場合は「すでに目的の値になっている」とみなしてそのまま返す。
+// （この二重パースが原因で、担当者名と画像データが保存できなくなっていた）
 async function getJson<T>(key: string, fallback: T): Promise<T> {
   const raw = await redis().get(key);
   if (raw === null || raw === undefined) return fallback;
@@ -48,7 +49,7 @@ async function getJson<T>(key: string, fallback: T): Promise<T> {
     try {
       return JSON.parse(raw) as T;
     } catch {
-      return fallback;
+      return raw as unknown as T;
     }
   }
   return raw as T;
@@ -57,6 +58,8 @@ async function getJson<T>(key: string, fallback: T): Promise<T> {
 async function setJson<T>(key: string, value: T): Promise<void> {
   await redis().set(key, JSON.stringify(value));
 }
+
+/* ---------------- 名前 ---------------- */
 
 async function listNames(): Promise<NameItem[]> {
   return getJson<NameItem[]>(NAMES_KEY, []);
@@ -90,9 +93,11 @@ async function deleteNameItem(id: string): Promise<void> {
   );
 }
 
+/* ---------------- メニュー ---------------- */
+
 async function listMenuItems(): Promise<MenuItem[]> {
   const list = await getJson<MenuItem[]>(MENU_KEY, []);
-  // price追加前に登録されたメニューにはpriceが無いため、表示時に落ちないよう補正する。
+  // 金額項目を追加する前に登録されたメニューには price が無いため補正する。
   return list.map((m) => ({ ...m, price: Number.isFinite(m.price) ? m.price : 0 }));
 }
 
@@ -126,29 +131,58 @@ async function deleteMenuItem(id: string): Promise<void> {
   );
 }
 
-async function listOrdersByDate(deliveryDate: string): Promise<Order[]> {
+/* ---------------- 注文 ---------------- */
+
+// 金額・支払い状況の項目を追加する前に保存された注文でも壊れないようにする。
+function normalizeOrder(o: Order): Order {
+  return {
+    ...o,
+    isLarge: o.isLarge === true,
+    unitPrice: Number.isFinite(o.unitPrice) ? o.unitPrice : 0,
+    largeExtra: Number.isFinite(o.largeExtra) ? o.largeExtra : 0,
+    isPaid: o.isPaid === true,
+  };
+}
+
+async function readOrders(): Promise<Order[]> {
   const all = await getJson<Order[]>(ORDERS_KEY, []);
+  return all.map(normalizeOrder);
+}
+
+async function listOrdersByDate(deliveryDate: string): Promise<Order[]> {
+  const all = await readOrders();
   return all
     .filter((o) => o.deliveryDate === deliveryDate)
     .sort((a, b) => a.orderedAt.localeCompare(b.orderedAt));
 }
 
 async function listOrderDates(): Promise<string[]> {
-  const all = await getJson<Order[]>(ORDERS_KEY, []);
+  const all = await readOrders();
   const set = new Set(all.map((o) => o.deliveryDate));
   return Array.from(set).sort((a, b) => b.localeCompare(a));
 }
 
+async function findOrder(deliveryDate: string, name: string): Promise<Order | null> {
+  const all = await readOrders();
+  const trimmed = name.trim().toLowerCase();
+  return (
+    all.find((o) => o.deliveryDate === deliveryDate && o.name.trim().toLowerCase() === trimmed) ?? null
+  );
+}
+
 async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
-  const all = await getJson<Order[]>(ORDERS_KEY, []);
+  const all = await readOrders();
   const now = new Date().toISOString();
   const idx = all.findIndex((o) => o.deliveryDate === input.deliveryDate && o.name === input.name);
   let record: Order;
   if (idx !== -1) {
+    // 内容を変更しても、管理者が確認済みにした支払い状況は引き継ぐ
     record = {
       ...all[idx],
       menuItem: input.menuItem,
       isLarge: input.isLarge,
+      unitPrice: input.unitPrice,
+      largeExtra: input.largeExtra,
       paymentMethod: input.paymentMethod,
       orderedVia: input.orderedVia,
       orderedAt: now,
@@ -162,7 +196,10 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
       name: input.name,
       menuItem: input.menuItem,
       isLarge: input.isLarge,
+      unitPrice: input.unitPrice,
+      largeExtra: input.largeExtra,
       paymentMethod: input.paymentMethod,
+      isPaid: false,
       orderedAt: now,
     };
     all.push(record);
@@ -171,20 +208,38 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
   return record;
 }
 
-async function resetOrders(): Promise<void> {
-  await setJson(ORDERS_KEY, []);
+async function deleteOrder(id: string): Promise<void> {
+  const all = await readOrders();
+  await setJson(
+    ORDERS_KEY,
+    all.filter((o) => o.id !== id)
+  );
 }
 
-async function getAdminName(): Promise<string> {
-  const name = await getJson<string | null>(ADMIN_NAME_KEY, null);
-  return name?.trim() || DEFAULT_ADMIN_NAME;
+async function setOrderPaid(id: string, isPaid: boolean): Promise<Order | null> {
+  const all = await readOrders();
+  const idx = all.findIndex((o) => o.id === id);
+  if (idx === -1) return null;
+  all[idx] = { ...all[idx], isPaid };
+  await setJson(ORDERS_KEY, all);
+  return all[idx];
 }
 
-async function setAdminName(name: string): Promise<string> {
-  const trimmed = name.trim() || DEFAULT_ADMIN_NAME;
-  await setJson(ADMIN_NAME_KEY, trimmed);
-  return trimmed;
+/* ---------------- 設定 ---------------- */
+
+async function getSettings(): Promise<Settings> {
+  const raw = await getJson<Partial<Settings> | null>(SETTINGS_KEY, null);
+  return normalizeSettings(raw);
 }
+
+async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
+  const current = await getSettings();
+  const next = normalizeSettings({ ...current, ...patch });
+  await setJson(SETTINGS_KEY, next);
+  return next;
+}
+
+/* ---------------- 画像 ---------------- */
 
 async function getImageInfo(): Promise<ImageInfo> {
   return getJson<ImageInfo>(IMAGE_META_KEY, null);
@@ -202,8 +257,11 @@ async function getImageFile(): Promise<{ buffer: Buffer; contentType: string } |
   const info = await getJson<ImageInfo>(IMAGE_META_KEY, null);
   if (!info?.ext) return null;
   const base64 = await getJson<string | null>(IMAGE_DATA_KEY, null);
-  if (!base64) return null;
-  return { buffer: Buffer.from(base64, "base64"), contentType: IMAGE_MIME[info.ext] ?? "application/octet-stream" };
+  if (!base64 || typeof base64 !== "string") return null;
+  return {
+    buffer: Buffer.from(base64, "base64"),
+    contentType: IMAGE_MIME[info.ext] ?? "application/octet-stream",
+  };
 }
 
 export const redisStore: StoreBackend = {
@@ -217,10 +275,12 @@ export const redisStore: StoreBackend = {
   deleteMenuItem,
   listOrdersByDate,
   listOrderDates,
+  findOrder,
   upsertOrder,
-  resetOrders,
-  getAdminName,
-  setAdminName,
+  deleteOrder,
+  setOrderPaid,
+  getSettings,
+  saveSettings,
   getImageInfo,
   saveImageFile,
   getImageFile,
