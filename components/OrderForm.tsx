@@ -1,11 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAYMENT_OPTIONS } from "@/lib/storeTypes";
+import { loadSavedName, saveName } from "@/lib/savedName";
+import { useCountdown } from "./useCountdown";
 
 type NameLite = { id: string; name: string };
 type MenuLite = { id: string; name: string; price: number };
+
+/** 現在の自分の注文内容 */
+type MyOrder = {
+  menuItem: string;
+  isLarge: boolean;
+  paymentMethod: string;
+  isPaid: boolean;
+  total: number;
+};
 
 const COLOR_DOT: Record<string, string> = {
   赤: "#ef4444",
@@ -21,27 +32,95 @@ function paymentColorDot(opt: string): string | null {
   return null;
 }
 
+function yen(n: number): string {
+  return `¥${n.toLocaleString()}`;
+}
+
 export default function OrderForm({
   orderedVia,
   names,
   menuItems,
   fixedPayment,
+  largeExtraPrice,
+  cutoffAtMs,
+  serverNowMs,
 }: {
   orderedVia: "today" | "tomorrow";
   names: NameLite[];
   menuItems: MenuLite[];
   fixedPayment?: string;
+  largeExtraPrice: number;
+  cutoffAtMs: number;
+  serverNowMs: number;
 }) {
   const router = useRouter();
+
+  // 今日の注文のみ締切の対象
+  const { closed: pastCutoff } = useCountdown(cutoffAtMs, serverNowMs);
+  const closed = orderedVia === "today" && pastCutoff;
+
+  const [phase, setPhase] = useState<"loading" | "form" | "done">("loading");
+  const [myOrder, setMyOrder] = useState<MyOrder | null>(null);
+
   const [name, setName] = useState("");
+  const [editingName, setEditingName] = useState(false);
   const [menuItem, setMenuItem] = useState("");
   const [isLarge, setIsLarge] = useState(false);
   const [payment, setPayment] = useState(fixedPayment ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [done, setDone] = useState(false);
 
-  const canSubmit = name.trim() && menuItem && payment && !submitting;
+  /** 保存済みの名前で、すでに注文が入っていないか確認する */
+  const checkExistingOrder = useCallback(
+    async (targetName: string) => {
+      try {
+        const res = await fetch(
+          `/api/orders/mine?name=${encodeURIComponent(targetName)}&via=${orderedVia}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        return (data.order as MyOrder | null) ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [orderedVia]
+  );
+
+  // 画面を開いたとき：保存済みの名前を読み込み、注文済みなら完了画面を出す
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const saved = loadSavedName();
+      if (!saved) {
+        if (!cancelled) {
+          setEditingName(true);
+          setPhase("form");
+        }
+        return;
+      }
+      const existing = await checkExistingOrder(saved);
+      if (cancelled) return;
+      setName(saved);
+      if (existing) {
+        setMyOrder(existing);
+        setMenuItem(existing.menuItem);
+        setIsLarge(existing.isLarge);
+        setPayment(fixedPayment ?? existing.paymentMethod);
+        setPhase("done");
+      } else {
+        setPhase("form");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [checkExistingOrder, fixedPayment]);
+
+  const selectedMenu = menuItems.find((m) => m.name === menuItem) ?? null;
+  const estimatedTotal = selectedMenu ? selectedMenu.price + (isLarge ? largeExtraPrice : 0) : 0;
+  const canSubmit = Boolean(name.trim()) && Boolean(menuItem) && Boolean(payment) && !submitting && !closed;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,33 +145,93 @@ export default function OrderForm({
         setSubmitting(false);
         return;
       }
-      setDone(true);
+      saveName(name);
+      const o = data.order;
+      setMyOrder({
+        menuItem: o.menuItem,
+        isLarge: o.isLarge,
+        paymentMethod: o.paymentMethod,
+        isPaid: o.isPaid === true,
+        total: (o.unitPrice ?? 0) + (o.largeExtra ?? 0),
+      });
+      setEditingName(false);
+      setPhase("done");
+      setSubmitting(false);
     } catch {
       setError("通信エラーが発生しました。電波状況を確認してもう一度お試しください。");
       setSubmitting(false);
     }
   }
 
-  if (done) {
+  if (phase === "loading") {
+    return <p className="py-16 text-center text-sm text-gray-400">読み込み中...</p>;
+  }
+
+  /* ---------------- 注文済みの表示 ---------------- */
+  if (phase === "done" && myOrder) {
     return (
-      <div className="flex flex-col items-center gap-6 py-10 text-center">
-        <div className="text-5xl">✅</div>
-        <p className="text-xl font-bold text-brand-dark">注文しました！</p>
-        <div className="w-full rounded-2xl bg-brand-light p-4 text-left text-base">
-          <p>
-            <span className="text-gray-500">名前：</span>
-            {name}
-          </p>
-          <p>
-            <span className="text-gray-500">メニュー：</span>
-            {menuItem}
-            {isLarge ? "（大盛り）" : ""}
-          </p>
-          <p>
-            <span className="text-gray-500">支払い方法：</span>
-            {payment}
+      <div className="flex flex-col gap-5 py-4">
+        <div className="rounded-2xl border-2 border-brand bg-brand-light px-4 py-5 text-center">
+          <p className="text-3xl">✅</p>
+          <p className="mt-2 text-lg font-bold text-brand-dark">
+            {orderedVia === "today" ? "本日の注文は完了しています" : "明日の注文は完了しています"}
           </p>
         </div>
+
+        <dl className="divide-y divide-gray-100 rounded-2xl border border-gray-200 text-base">
+          <div className="flex items-center justify-between px-4 py-3">
+            <dt className="text-gray-500">名前</dt>
+            <dd className="font-bold text-gray-800">{name}</dd>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <dt className="text-gray-500">お弁当</dt>
+            <dd className="font-bold text-gray-800">{myOrder.menuItem}</dd>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <dt className="text-gray-500">大盛り</dt>
+            <dd className="font-bold text-gray-800">{myOrder.isLarge ? "あり" : "なし"}</dd>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <dt className="text-gray-500">支払い方法</dt>
+            <dd className="text-right font-bold text-gray-800">{myOrder.paymentMethod}</dd>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <dt className="text-gray-500">金額</dt>
+            <dd className="font-bold text-gray-800">{yen(myOrder.total)}</dd>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <dt className="text-gray-500">支払い状況</dt>
+            <dd>
+              {myOrder.isPaid ? (
+                <span className="rounded-full bg-brand-light px-3 py-1 text-sm font-bold text-brand-dark">
+                  ✅ 支払い済み
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-700">
+                  ⏳ 確認中
+                </span>
+              )}
+            </dd>
+          </div>
+        </dl>
+
+        {closed ? (
+          <p className="rounded-xl bg-gray-50 px-4 py-3 text-center text-sm text-gray-500">
+            受付時間を過ぎたため、変更できません。
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setPhase("form");
+              setError("");
+            }}
+            className="w-full rounded-2xl border-2 border-brand bg-white px-6 py-4 text-lg font-bold text-brand-dark active:bg-brand-light"
+          >
+            ✏️ 注文内容を変更する
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => router.push("/")}
@@ -104,14 +243,16 @@ export default function OrderForm({
     );
   }
 
-  if (error === "本日の受付は終了しました。") {
+  /* ---------------- 受付終了 ---------------- */
+  if (closed) {
     return (
       <div className="flex flex-col items-center gap-4 py-14 text-center">
-        <p className="text-2xl font-bold text-gray-700">本日の受付は終了しました。</p>
+        <p className="text-4xl">🔴</p>
+        <p className="text-xl font-bold text-gray-700">本日の受付は終了しました</p>
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="mt-4 rounded-2xl bg-gray-200 px-6 py-4 text-base font-bold text-gray-700 active:bg-gray-300"
+          className="mt-4 w-full rounded-2xl bg-gray-200 px-6 py-4 text-base font-bold text-gray-700 active:bg-gray-300"
         >
           トップへ戻る
         </button>
@@ -119,29 +260,50 @@ export default function OrderForm({
     );
   }
 
+  /* ---------------- 注文フォーム ---------------- */
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
-        <p>⏰ 受付は 7:55 までです。</p>
-        <p>💴「手渡し」を選んだ方は、朝 7:55 までに担当者へお支払いください。</p>
-      </div>
+      {orderedVia === "today" && (
+        <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
+          <p>⏰ 受付は締切時刻までです。</p>
+          <p>💴「手渡し」を選んだ方は、締切までに担当者へお支払いください。</p>
+        </div>
+      )}
 
       <div>
         <label className="mb-2 block text-base font-bold text-gray-700">名前</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          list="names-list"
-          placeholder="名前を選ぶか、新しく入力してください"
-          required
-          className="w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-4 text-lg focus:border-brand focus:outline-none"
-        />
-        <datalist id="names-list">
-          {names.map((n) => (
-            <option key={n.id} value={n.name} />
-          ))}
-        </datalist>
-        <p className="mt-1 text-xs text-gray-400">登録されていない名前を入力すると、自動で登録されます。</p>
+        {name && !editingName ? (
+          <div className="flex items-center justify-between rounded-xl border-2 border-gray-300 bg-gray-50 px-4 py-4">
+            <span className="text-lg font-bold text-gray-800">{name}</span>
+            <button
+              type="button"
+              onClick={() => setEditingName(true)}
+              className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-gray-600 active:bg-gray-100"
+            >
+              変更
+            </button>
+          </div>
+        ) : (
+          <>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              list="names-list"
+              placeholder="名前を選ぶか、新しく入力してください"
+              maxLength={20}
+              required
+              className="w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-4 text-lg focus:border-brand focus:outline-none"
+            />
+            <datalist id="names-list">
+              {names.map((n) => (
+                <option key={n.id} value={n.name} />
+              ))}
+            </datalist>
+            <p className="mt-1 text-xs text-gray-400">
+              入力した名前はこの端末に保存され、次回から自動で入ります。
+            </p>
+          </>
+        )}
       </div>
 
       <div>
@@ -157,7 +319,7 @@ export default function OrderForm({
           <option value="">選択してください</option>
           {menuItems.map((m) => (
             <option key={m.id} value={m.name}>
-              {m.name}（¥{(m.price ?? 0).toLocaleString()}）
+              {m.name}（{yen(m.price ?? 0)}）
             </option>
           ))}
         </select>
@@ -169,8 +331,14 @@ export default function OrderForm({
             onChange={(e) => setIsLarge(e.target.checked)}
             className="h-5 w-5 accent-brand"
           />
-          大盛りにする
+          大盛りにする（+{yen(largeExtraPrice)}）
         </label>
+
+        {selectedMenu && (
+          <p className="mt-3 rounded-xl bg-brand-light px-4 py-3 text-right text-base font-bold text-brand-dark">
+            合計 {yen(estimatedTotal)}
+          </p>
+        )}
       </div>
 
       <div>
@@ -219,8 +387,18 @@ export default function OrderForm({
         disabled={!canSubmit}
         className="mt-2 w-full rounded-2xl bg-brand px-6 py-5 text-xl font-bold text-white shadow-sm active:bg-brand-dark disabled:bg-gray-300"
       >
-        {submitting ? "送信中..." : "注文する"}
+        {submitting ? "送信中..." : myOrder ? "この内容に変更する" : "注文する"}
       </button>
+
+      {myOrder && (
+        <button
+          type="button"
+          onClick={() => setPhase("done")}
+          className="w-full rounded-2xl bg-gray-100 px-6 py-3 text-base font-semibold text-gray-600 active:bg-gray-200"
+        >
+          変更をやめる
+        </button>
+      )}
     </form>
   );
 }
