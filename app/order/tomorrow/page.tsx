@@ -12,11 +12,11 @@ export default async function TomorrowOrderPage() {
   const dateLabel = formatDateJp(tomorrowStr(now));
 
   return (
-    <main className="flex min-h-screen flex-col px-4 py-4">
-      <header className="mb-4 flex items-center gap-3">
+    <main className="flex min-h-screen flex-col bg-gray-50 px-4 py-4">
+      <header className="mb-5 flex items-center gap-3">
         <Link
           href="/"
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-xl active:bg-gray-200"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-white text-xl shadow-sm active:bg-gray-100"
         >
           ←
         </Link>
