@@ -4,6 +4,8 @@ import { todayStr, formatDateJp, formatCutoffLabel, cutoffEpochMs, isWithinLastD
 import ImageZoomModal from "@/components/ImageZoomModal";
 import StatusCard from "@/components/StatusCard";
 import OrderButtons from "@/components/OrderButtons";
+import { Card } from "@/components/ui/Card";
+import { buttonVariants } from "@/components/ui/Button";
 
 export const dynamic = "force-dynamic";
 
@@ -35,18 +37,18 @@ export default async function TopPage() {
   const cutoffLabel = formatCutoffLabel(settings.cutoffHour, settings.cutoffMinute);
 
   return (
-    <main className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between px-4 py-3">
-        <h1 className="text-lg font-bold text-brand-dark">🍱 現場めし</h1>
-        <Link
-          href="/admin/login"
-          className="rounded-full border border-gray-300 px-3 py-1.5 text-xs text-gray-600 active:bg-gray-100"
-        >
+    <main className="flex min-h-screen flex-col bg-gray-50">
+      <header className="flex items-center justify-between bg-white px-4 py-3.5">
+        <div className="flex items-center gap-2.5">
+          <img src="/icon.svg" alt="" width={34} height={34} className="rounded-lg" />
+          <h1 className="text-lg font-bold text-brand-dark">現場めし</h1>
+        </div>
+        <Link href="/admin/login" className={buttonVariants("ghost", "sm")}>
           管理者ログイン
         </Link>
       </header>
 
-      <div className="flex-1 px-4 pb-10">
+      <div className="flex-1 space-y-6 px-4 py-5 pb-12">
         <StatusCard
           dateLabel={formatDateJp(todayStr(now))}
           adminName={settings.adminName}
@@ -55,40 +57,40 @@ export default async function TopPage() {
           serverNowMs={serverNowMs}
         />
 
-        <section className="mt-5">
-          <p className="mb-2 text-sm font-semibold text-gray-600">今週のメニュー（タップで拡大）</p>
+        <section>
+          <p className="mb-2 text-sm font-bold text-gray-500">今週のメニュー（タップで拡大）</p>
           {image?.updatedAt ? (
             <ImageZoomModal
               src={`/api/image/file?v=${encodeURIComponent(image.updatedAt)}`}
               alt="今週のメニュー"
             />
           ) : (
-            <div className="flex aspect-[4/3] w-full items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 text-center text-sm text-gray-400">
+            <Card className="flex aspect-[4/3] w-full items-center justify-center border-dashed text-center text-sm text-gray-400">
               今週のメニュー画像は
               <br />
               まだ登録されていません
-            </div>
+            </Card>
           )}
         </section>
 
-        <section className="mt-6">
+        <section>
           <OrderButtons cutoffAtMs={cutoffAtMs} serverNowMs={serverNowMs} />
         </section>
 
         {ranking.length > 0 && (
-          <section className="mt-8">
+          <section>
             <h2 className="mb-1 text-base font-bold text-brand-dark">🏆 最近よく頼まれているお弁当</h2>
             <p className="mb-3 text-xs text-gray-500">直近7日間・大盛りも同じメニューとして集計</p>
-            <ol className="divide-y divide-gray-100 rounded-2xl border border-gray-100">
+            <Card className="divide-y divide-gray-100 p-0">
               {ranking.map((r, i) => (
-                <li key={r.menuItem} className="flex items-center justify-between px-4 py-3 text-sm">
+                <div key={r.menuItem} className="flex items-center justify-between px-4 py-3.5 text-sm">
                   <span className="font-bold text-gray-800">
                     {RANK_ICONS[i] ?? `${i + 1}位`} {r.menuItem}
                   </span>
                   <span className="text-gray-500">{r.count}個</span>
-                </li>
+                </div>
               ))}
-            </ol>
+            </Card>
           </section>
         )}
       </div>
