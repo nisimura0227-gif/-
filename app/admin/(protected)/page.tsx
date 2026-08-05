@@ -17,7 +17,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-5 flex items-center justify-between">
         <p className="text-sm text-gray-500">
           担当者：<span className="font-bold text-gray-800">{settings.adminName}</span>
         </p>

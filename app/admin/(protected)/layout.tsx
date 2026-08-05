@@ -13,12 +13,15 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
   }
 
   return (
-    <main className="flex min-h-screen flex-col pb-24">
-      <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <h1 className="text-base font-bold text-brand-dark">🛠 現場めし 管理画面</h1>
+    <main className="flex min-h-screen flex-col bg-gray-50 pb-24">
+      <header className="flex items-center justify-between bg-white px-4 py-3.5 shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <img src="/icon.svg" alt="" width={30} height={30} className="rounded-lg" />
+          <h1 className="text-base font-bold text-brand-dark">現場めし 管理画面</h1>
+        </div>
         <LogoutButton />
       </header>
-      <div className="flex-1 px-4 py-4">{children}</div>
+      <div className="flex-1 px-4 py-5">{children}</div>
       <AdminNav />
     </main>
   );
