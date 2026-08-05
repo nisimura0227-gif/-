@@ -14,7 +14,9 @@ const config: Config = {
           light: "#eaf6ee",
         },
         accent: {
-          DEFAULT: "#e07a2c",
+          DEFAULT: "#e67e22",
+          dark: "#b85e18",
+          light: "#fdf0e3",
         },
       },
       fontSize: {
