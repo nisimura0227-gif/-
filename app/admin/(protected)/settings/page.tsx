@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Settings } from "@/lib/storeTypes";
+import { Input, FieldLabel, HelpText } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -79,55 +82,36 @@ export default function AdminSettingsPage() {
     <form onSubmit={handleSave} className="flex flex-col gap-6">
       <h2 className="text-base font-bold text-brand-dark">⚙️ 設定</h2>
 
-      <div>
-        <label className="mb-2 block text-base font-bold text-gray-700">担当者名</label>
-        <input
-          value={adminName}
-          onChange={(e) => setAdminName(e.target.value)}
-          maxLength={20}
-          required
-          className="w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-base focus:border-brand focus:outline-none"
-        />
-        <p className="mt-1 text-xs text-gray-400">一般ユーザーのトップページにも表示されます。</p>
-      </div>
+      <Card className="flex flex-col gap-6">
+        <div>
+          <FieldLabel>担当者名</FieldLabel>
+          <Input value={adminName} onChange={(e) => setAdminName(e.target.value)} maxLength={20} required />
+          <HelpText>一般ユーザーのトップページにも表示されます。</HelpText>
+        </div>
 
-      <div>
-        <label className="mb-2 block text-base font-bold text-gray-700">受付の締切時刻</label>
-        <input
-          type="time"
-          value={cutoff}
-          onChange={(e) => setCutoff(e.target.value)}
-          required
-          className="w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-base focus:border-brand focus:outline-none"
-        />
-        <p className="mt-1 text-xs text-gray-400">この時刻を過ぎると今日の注文ができなくなります。</p>
-      </div>
+        <div>
+          <FieldLabel>受付の締切時刻</FieldLabel>
+          <Input type="time" value={cutoff} onChange={(e) => setCutoff(e.target.value)} required />
+          <HelpText>この時刻を過ぎると今日の注文ができなくなります。</HelpText>
+        </div>
 
-      <div>
-        <label className="mb-2 block text-base font-bold text-gray-700">大盛りの追加料金（円）</label>
-        <input
-          value={largeExtraPrice}
-          onChange={(e) => setLargeExtraPrice(e.target.value.replace(/[^0-9]/g, ""))}
-          inputMode="numeric"
-          required
-          className="w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-base focus:border-brand focus:outline-none"
-        />
-        <p className="mt-1 text-xs text-gray-400">
-          変更しても、すでに入っている注文の金額はそのまま残ります。
-        </p>
-      </div>
+        <div>
+          <FieldLabel>大盛りの追加料金（円）</FieldLabel>
+          <Input
+            value={largeExtraPrice}
+            onChange={(e) => setLargeExtraPrice(e.target.value.replace(/[^0-9]/g, ""))}
+            inputMode="numeric"
+            required
+          />
+          <HelpText>変更しても、すでに入っている注文の金額はそのまま残ります。</HelpText>
+        </div>
 
-      <div>
-        <label className="mb-2 block text-base font-bold text-gray-700">お弁当屋の電話番号</label>
-        <input
-          value={shopPhone}
-          onChange={(e) => setShopPhone(e.target.value)}
-          inputMode="tel"
-          required
-          className="w-full rounded-xl border-2 border-gray-300 bg-white px-4 py-3 text-base focus:border-brand focus:outline-none"
-        />
-        <p className="mt-1 text-xs text-gray-400">管理画面の「お弁当屋へ電話する」ボタンで使われます。</p>
-      </div>
+        <div>
+          <FieldLabel>お弁当屋の電話番号</FieldLabel>
+          <Input value={shopPhone} onChange={(e) => setShopPhone(e.target.value)} inputMode="tel" required />
+          <HelpText>管理画面の「お弁当屋へ電話する」ボタンで使われます。</HelpText>
+        </div>
+      </Card>
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</p>}
       {saved && (
@@ -136,13 +120,9 @@ export default function AdminSettingsPage() {
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={saving}
-        className="w-full rounded-2xl bg-brand px-6 py-4 text-lg font-bold text-white active:bg-brand-dark disabled:bg-gray-300"
-      >
+      <Button type="submit" size="lg" disabled={saving}>
         {saving ? "保存中..." : "設定を保存する"}
-      </button>
+      </Button>
     </form>
   );
 }
