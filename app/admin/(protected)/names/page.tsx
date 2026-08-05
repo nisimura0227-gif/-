@@ -1,6 +1,7 @@
 import { listNames, listOrdersByDate } from "@/lib/store";
 import { todayStr, tomorrowStr } from "@/lib/date";
 import ManageList from "@/components/ManageList";
+import { Card } from "@/components/ui/Card";
 
 export const dynamic = "force-dynamic";
 
@@ -24,16 +25,16 @@ export default async function AdminNamesPage() {
       <div className="mb-8">
         <h2 className="mb-3 text-base font-bold text-brand-dark">👀 登録されている名前と注文状況</h2>
         {names.length === 0 ? (
-          <p className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-400">
+          <Card className="border-dashed text-center text-sm text-gray-400">
             まだ誰も登録していません。注文フォームから名前を入力すると自動で登録されます。
-          </p>
+          </Card>
         ) : (
-          <ul className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+          <Card className="divide-y divide-gray-100 p-0">
             {names.map((n) => {
               const t = todayMap.get(n.name);
               const m = tomorrowMap.get(n.name);
               return (
-                <li key={n.id} className="px-3 py-2.5">
+                <div key={n.id} className="px-3.5 py-3">
                   <p className="mb-1 text-base font-bold text-gray-800">{n.name}</p>
                   <p className="text-xs text-gray-500">
                     今日：{formatOrder(t?.menuItem, t?.isLarge)}
@@ -41,10 +42,10 @@ export default async function AdminNamesPage() {
                     {t?.isPaid ? " ✅支払い済み" : ""}
                   </p>
                   <p className="text-xs text-gray-500">明日：{formatOrder(m?.menuItem, m?.isLarge)}</p>
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </Card>
         )}
       </div>
 
