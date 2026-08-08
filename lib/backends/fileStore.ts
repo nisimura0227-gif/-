@@ -14,6 +14,8 @@ import type {
   UpsertOrderInput,
   Settings,
   StoreBackend,
+  PaymentStatus,
+  LineLink,
 } from "../storeTypes";
 import { IMAGE_MIME, normalizeSettings } from "../storeTypes";
 
@@ -158,13 +160,20 @@ async function deleteMenuItem(id: string): Promise<void> {
 /* ---------------- 注文 ---------------- */
 
 // 金額・支払い状況の項目を追加する前に保存された注文でも壊れないようにする。
-function normalizeOrder(o: Order): Order {
+// 旧形式（isPaid: boolean）のデータは paymentStatus へ移行する。
+function normalizeOrder(o: Order & { isPaid?: boolean }): Order {
+  const paymentStatus: PaymentStatus =
+    o.paymentStatus === "unpaid" || o.paymentStatus === "claimed" || o.paymentStatus === "paid"
+      ? o.paymentStatus
+      : o.isPaid === true
+        ? "paid"
+        : "unpaid";
   return {
     ...o,
     isLarge: o.isLarge === true,
     unitPrice: Number.isFinite(o.unitPrice) ? o.unitPrice : 0,
     largeExtra: Number.isFinite(o.largeExtra) ? o.largeExtra : 0,
-    isPaid: o.isPaid === true,
+    paymentStatus,
   };
 }
 
@@ -198,7 +207,12 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
   return withLock("orders.json", async () => {
     const all = await readOrders();
     const now = new Date().toISOString();
-    const idx = all.findIndex((o) => o.deliveryDate === input.deliveryDate && o.name === input.name);
+    // findOrder と同じ「前後の空白を無視・大文字小文字を無視」の比較にする。
+    // ここがずれていると、同じ人のつもりの注文が二重に登録されてしまう。
+    const targetName = input.name.trim().toLowerCase();
+    const idx = all.findIndex(
+      (o) => o.deliveryDate === input.deliveryDate && o.name.trim().toLowerCase() === targetName
+    );
     let record: Order;
     if (idx !== -1) {
       // 内容を変更しても、管理者が確認済みにした支払い状況は引き継ぐ
@@ -224,7 +238,7 @@ async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
         unitPrice: input.unitPrice,
         largeExtra: input.largeExtra,
         paymentMethod: input.paymentMethod,
-        isPaid: false,
+        paymentStatus: "unpaid",
         orderedAt: now,
       };
       all.push(record);
@@ -244,15 +258,78 @@ async function deleteOrder(id: string): Promise<void> {
   });
 }
 
-async function setOrderPaid(id: string, isPaid: boolean): Promise<Order | null> {
+async function setOrderPaymentStatus(
+  id: string,
+  status: PaymentStatus,
+  meta?: { confirmedBy?: string }
+): Promise<Order | null> {
   return withLock("orders.json", async () => {
     const all = await readOrders();
     const idx = all.findIndex((o) => o.id === id);
     if (idx === -1) return null;
-    all[idx] = { ...all[idx], isPaid };
+    const now = new Date().toISOString();
+    all[idx] = {
+      ...all[idx],
+      paymentStatus: status,
+      ...(status === "paid" ? { paymentConfirmedAt: now } : {}),
+    };
     await writeJson("orders.json", all);
     return all[idx];
   });
+}
+
+// 本人が「渡しました」と申告する。unpaid の場合のみ claimed に進める（冪等・多重通知防止）。
+async function claimOrderPaid(deliveryDate: string, name: string): Promise<{ order: Order; changed: boolean } | null> {
+  return withLock("orders.json", async () => {
+    const all = await readOrders();
+    const trimmed = name.trim().toLowerCase();
+    const idx = all.findIndex(
+      (o) => o.deliveryDate === deliveryDate && o.name.trim().toLowerCase() === trimmed
+    );
+    if (idx === -1) return null;
+    const changed = all[idx].paymentStatus === "unpaid";
+    if (changed) {
+      all[idx] = { ...all[idx], paymentStatus: "claimed", paymentClaimedAt: new Date().toISOString() };
+      await writeJson("orders.json", all);
+    }
+    return { order: all[idx], changed };
+  });
+}
+
+/* ---------------- LINE連携 ---------------- */
+
+function lineLinkKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+async function readLineLinks(): Promise<LineLink[]> {
+  return readJson<LineLink[]>("lineLinks.json", []);
+}
+
+async function getLineLinkByName(name: string): Promise<LineLink | null> {
+  const all = await readLineLinks();
+  const key = lineLinkKey(name);
+  return all.find((l) => lineLinkKey(l.name) === key) ?? null;
+}
+
+async function upsertLineLink(name: string, lineUserId: string, displayName: string): Promise<LineLink> {
+  return withLock("lineLinks.json", async () => {
+    const all = await readLineLinks();
+    const key = lineLinkKey(name);
+    const idx = all.findIndex((l) => lineLinkKey(l.name) === key);
+    const record: LineLink = { name: name.trim(), lineUserId, displayName, linkedAt: new Date().toISOString() };
+    if (idx === -1) {
+      all.push(record);
+    } else {
+      all[idx] = record;
+    }
+    await writeJson("lineLinks.json", all);
+    return record;
+  });
+}
+
+async function listLineLinks(): Promise<LineLink[]> {
+  return readLineLinks();
 }
 
 /* ---------------- 設定 ---------------- */
@@ -316,10 +393,14 @@ export const fileStore: StoreBackend = {
   findOrder,
   upsertOrder,
   deleteOrder,
-  setOrderPaid,
+  setOrderPaymentStatus,
+  claimOrderPaid,
   getSettings,
   saveSettings,
   getImageInfo,
   saveImageFile,
   getImageFile,
+  getLineLinkByName,
+  upsertLineLink,
+  listLineLinks,
 };

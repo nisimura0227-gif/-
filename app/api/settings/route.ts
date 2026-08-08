@@ -47,6 +47,20 @@ export async function PUT(req: NextRequest) {
     patch.cutoffMinute = m;
   }
 
+  if (body.tomorrowCutoffHour !== undefined || body.tomorrowCutoffMinute !== undefined) {
+    const h = Number(body.tomorrowCutoffHour);
+    const m = Number(body.tomorrowCutoffMinute);
+    if (!Number.isInteger(h) || h < 0 || h > 23 || !Number.isInteger(m) || m < 0 || m > 59) {
+      return NextResponse.json({ message: "明日の注文の締切時刻が正しくありません。" }, { status: 400 });
+    }
+    patch.tomorrowCutoffHour = h;
+    patch.tomorrowCutoffMinute = m;
+  }
+
+  if (typeof body.notifyNewOrder === "boolean") {
+    patch.notifyNewOrder = body.notifyNewOrder;
+  }
+
   if (body.largeExtraPrice !== undefined) {
     const p = Number(body.largeExtraPrice);
     if (!Number.isFinite(p) || p < 0 || p > 100000) {

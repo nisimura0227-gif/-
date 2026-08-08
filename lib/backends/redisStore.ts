@@ -15,6 +15,8 @@ import type {
   UpsertOrderInput,
   Settings,
   StoreBackend,
+  PaymentStatus,
+  LineLink,
 } from "../storeTypes";
 import { IMAGE_MIME, normalizeSettings } from "../storeTypes";
 
@@ -24,6 +26,7 @@ const ORDERS_KEY = "bento:orders";
 const IMAGE_META_KEY = "bento:image:meta";
 const IMAGE_DATA_KEY = "bento:image:data";
 const SETTINGS_KEY = "bento:settings";
+const LINE_LINKS_KEY = "bento:lineLinks";
 
 let client: Redis | null = null;
 function redis(): Redis {
@@ -59,6 +62,38 @@ async function setJson<T>(key: string, value: T): Promise<void> {
   await redis().set(key, JSON.stringify(value));
 }
 
+/**
+ * Redis上の簡易ロック。fileStore.ts の withLock（同一プロセス内での直列化）と異なり、
+ * Vercelのサーバーレス関数は毎回別プロセスで動くため、Redis自体に「読み取り→書き込み」の
+ * 区間をロックしないと、同時刻に複数人が注文したときに片方の注文が消えてしまう
+ * （後勝ちで上書きされる）。SET NX（未設定のときだけ成功）で簡易的な排他制御を行う。
+ */
+async function withLock<T>(lockName: string, fn: () => Promise<T>): Promise<T> {
+  const lockKey = `bento:lock:${lockName}`;
+  const token = randomUUID();
+  const maxWaitMs = 4000;
+  const start = Date.now();
+  let acquired = false;
+  while (Date.now() - start < maxWaitMs) {
+    const result = await redis().set(lockKey, token, { nx: true, px: 3000 });
+    if (result === "OK") {
+      acquired = true;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 40 + Math.random() * 80));
+  }
+  // ロックが取れなくても処理自体は続行する（ロック取得の失敗で注文を失敗させないため）。
+  // 取れなかった場合は最後に書いた方が勝つ従来通りの挙動に留まる。
+  try {
+    return await fn();
+  } finally {
+    if (acquired) {
+      const current = await redis().get(lockKey);
+      if (current === token) await redis().del(lockKey);
+    }
+  }
+}
+
 /* ---------------- 名前 ---------------- */
 
 async function listNames(): Promise<NameItem[]> {
@@ -66,31 +101,37 @@ async function listNames(): Promise<NameItem[]> {
 }
 
 async function addName(name: string): Promise<NameItem> {
-  const list = await getJson<NameItem[]>(NAMES_KEY, []);
-  const trimmed = name.trim();
-  const existing = list.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
-  if (existing) return existing;
-  const item: NameItem = { id: randomUUID(), name: trimmed, createdAt: new Date().toISOString() };
-  list.push(item);
-  await setJson(NAMES_KEY, list);
-  return item;
+  return withLock("names", async () => {
+    const list = await getJson<NameItem[]>(NAMES_KEY, []);
+    const trimmed = name.trim();
+    const existing = list.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) return existing;
+    const item: NameItem = { id: randomUUID(), name: trimmed, createdAt: new Date().toISOString() };
+    list.push(item);
+    await setJson(NAMES_KEY, list);
+    return item;
+  });
 }
 
 async function updateNameItem(id: string, name: string): Promise<NameItem | null> {
-  const list = await getJson<NameItem[]>(NAMES_KEY, []);
-  const idx = list.findIndex((n) => n.id === id);
-  if (idx === -1) return null;
-  list[idx] = { ...list[idx], name: name.trim() };
-  await setJson(NAMES_KEY, list);
-  return list[idx];
+  return withLock("names", async () => {
+    const list = await getJson<NameItem[]>(NAMES_KEY, []);
+    const idx = list.findIndex((n) => n.id === id);
+    if (idx === -1) return null;
+    list[idx] = { ...list[idx], name: name.trim() };
+    await setJson(NAMES_KEY, list);
+    return list[idx];
+  });
 }
 
 async function deleteNameItem(id: string): Promise<void> {
-  const list = await getJson<NameItem[]>(NAMES_KEY, []);
-  await setJson(
-    NAMES_KEY,
-    list.filter((n) => n.id !== id)
-  );
+  return withLock("names", async () => {
+    const list = await getJson<NameItem[]>(NAMES_KEY, []);
+    await setJson(
+      NAMES_KEY,
+      list.filter((n) => n.id !== id)
+    );
+  });
 }
 
 /* ---------------- メニュー ---------------- */
@@ -102,45 +143,58 @@ async function listMenuItems(): Promise<MenuItem[]> {
 }
 
 async function addMenuItem(name: string, price: number): Promise<MenuItem> {
-  const list = await getJson<MenuItem[]>(MENU_KEY, []);
-  const item: MenuItem = {
-    id: randomUUID(),
-    name: name.trim(),
-    price: Number.isFinite(price) ? price : 0,
-    createdAt: new Date().toISOString(),
-  };
-  list.push(item);
-  await setJson(MENU_KEY, list);
-  return item;
+  return withLock("menu", async () => {
+    const list = await getJson<MenuItem[]>(MENU_KEY, []);
+    const item: MenuItem = {
+      id: randomUUID(),
+      name: name.trim(),
+      price: Number.isFinite(price) ? price : 0,
+      createdAt: new Date().toISOString(),
+    };
+    list.push(item);
+    await setJson(MENU_KEY, list);
+    return item;
+  });
 }
 
 async function updateMenuItem(id: string, name: string, price: number): Promise<MenuItem | null> {
-  const list = await getJson<MenuItem[]>(MENU_KEY, []);
-  const idx = list.findIndex((m) => m.id === id);
-  if (idx === -1) return null;
-  list[idx] = { ...list[idx], name: name.trim(), price: Number.isFinite(price) ? price : 0 };
-  await setJson(MENU_KEY, list);
-  return list[idx];
+  return withLock("menu", async () => {
+    const list = await getJson<MenuItem[]>(MENU_KEY, []);
+    const idx = list.findIndex((m) => m.id === id);
+    if (idx === -1) return null;
+    list[idx] = { ...list[idx], name: name.trim(), price: Number.isFinite(price) ? price : 0 };
+    await setJson(MENU_KEY, list);
+    return list[idx];
+  });
 }
 
 async function deleteMenuItem(id: string): Promise<void> {
-  const list = await getJson<MenuItem[]>(MENU_KEY, []);
-  await setJson(
-    MENU_KEY,
-    list.filter((m) => m.id !== id)
-  );
+  return withLock("menu", async () => {
+    const list = await getJson<MenuItem[]>(MENU_KEY, []);
+    await setJson(
+      MENU_KEY,
+      list.filter((m) => m.id !== id)
+    );
+  });
 }
 
 /* ---------------- 注文 ---------------- */
 
 // 金額・支払い状況の項目を追加する前に保存された注文でも壊れないようにする。
-function normalizeOrder(o: Order): Order {
+// 旧形式（isPaid: boolean）のデータは paymentStatus へ移行する。
+function normalizeOrder(o: Order & { isPaid?: boolean }): Order {
+  const paymentStatus: PaymentStatus =
+    o.paymentStatus === "unpaid" || o.paymentStatus === "claimed" || o.paymentStatus === "paid"
+      ? o.paymentStatus
+      : o.isPaid === true
+        ? "paid"
+        : "unpaid";
   return {
     ...o,
     isLarge: o.isLarge === true,
     unitPrice: Number.isFinite(o.unitPrice) ? o.unitPrice : 0,
     largeExtra: Number.isFinite(o.largeExtra) ? o.largeExtra : 0,
-    isPaid: o.isPaid === true,
+    paymentStatus,
   };
 }
 
@@ -171,58 +225,128 @@ async function findOrder(deliveryDate: string, name: string): Promise<Order | nu
 }
 
 async function upsertOrder(input: UpsertOrderInput): Promise<Order> {
-  const all = await readOrders();
-  const now = new Date().toISOString();
-  const idx = all.findIndex((o) => o.deliveryDate === input.deliveryDate && o.name === input.name);
-  let record: Order;
-  if (idx !== -1) {
-    // 内容を変更しても、管理者が確認済みにした支払い状況は引き継ぐ
-    record = {
-      ...all[idx],
-      menuItem: input.menuItem,
-      isLarge: input.isLarge,
-      unitPrice: input.unitPrice,
-      largeExtra: input.largeExtra,
-      paymentMethod: input.paymentMethod,
-      orderedVia: input.orderedVia,
-      orderedAt: now,
-    };
-    all[idx] = record;
-  } else {
-    record = {
-      id: randomUUID(),
-      deliveryDate: input.deliveryDate,
-      orderedVia: input.orderedVia,
-      name: input.name,
-      menuItem: input.menuItem,
-      isLarge: input.isLarge,
-      unitPrice: input.unitPrice,
-      largeExtra: input.largeExtra,
-      paymentMethod: input.paymentMethod,
-      isPaid: false,
-      orderedAt: now,
-    };
-    all.push(record);
-  }
-  await setJson(ORDERS_KEY, all);
-  return record;
+  return withLock("orders", async () => {
+    const all = await readOrders();
+    const now = new Date().toISOString();
+    // findOrder と同じ「前後の空白を無視・大文字小文字を無視」の比較にする。
+    // ここがずれていると、同じ人のつもりの注文が二重に登録されてしまう。
+    const targetName = input.name.trim().toLowerCase();
+    const idx = all.findIndex(
+      (o) => o.deliveryDate === input.deliveryDate && o.name.trim().toLowerCase() === targetName
+    );
+    let record: Order;
+    if (idx !== -1) {
+      // 内容を変更しても、管理者が確認済みにした支払い状況は引き継ぐ
+      record = {
+        ...all[idx],
+        menuItem: input.menuItem,
+        isLarge: input.isLarge,
+        unitPrice: input.unitPrice,
+        largeExtra: input.largeExtra,
+        paymentMethod: input.paymentMethod,
+        orderedVia: input.orderedVia,
+        orderedAt: now,
+      };
+      all[idx] = record;
+    } else {
+      record = {
+        id: randomUUID(),
+        deliveryDate: input.deliveryDate,
+        orderedVia: input.orderedVia,
+        name: input.name,
+        menuItem: input.menuItem,
+        isLarge: input.isLarge,
+        unitPrice: input.unitPrice,
+        largeExtra: input.largeExtra,
+        paymentMethod: input.paymentMethod,
+        paymentStatus: "unpaid",
+        orderedAt: now,
+      };
+      all.push(record);
+    }
+    await setJson(ORDERS_KEY, all);
+    return record;
+  });
 }
 
 async function deleteOrder(id: string): Promise<void> {
-  const all = await readOrders();
-  await setJson(
-    ORDERS_KEY,
-    all.filter((o) => o.id !== id)
-  );
+  return withLock("orders", async () => {
+    const all = await readOrders();
+    await setJson(
+      ORDERS_KEY,
+      all.filter((o) => o.id !== id)
+    );
+  });
 }
 
-async function setOrderPaid(id: string, isPaid: boolean): Promise<Order | null> {
-  const all = await readOrders();
-  const idx = all.findIndex((o) => o.id === id);
-  if (idx === -1) return null;
-  all[idx] = { ...all[idx], isPaid };
-  await setJson(ORDERS_KEY, all);
-  return all[idx];
+async function setOrderPaymentStatus(
+  id: string,
+  status: PaymentStatus,
+  meta?: { confirmedBy?: string }
+): Promise<Order | null> {
+  return withLock("orders", async () => {
+    const all = await readOrders();
+    const idx = all.findIndex((o) => o.id === id);
+    if (idx === -1) return null;
+    const now = new Date().toISOString();
+    all[idx] = {
+      ...all[idx],
+      paymentStatus: status,
+      ...(status === "paid" ? { paymentConfirmedAt: now } : {}),
+    };
+    await setJson(ORDERS_KEY, all);
+    return all[idx];
+  });
+}
+
+// 本人が「渡しました」と申告する。unpaid の場合のみ claimed に進める（冪等・多重通知防止）。
+async function claimOrderPaid(deliveryDate: string, name: string): Promise<{ order: Order; changed: boolean } | null> {
+  return withLock("orders", async () => {
+    const all = await readOrders();
+    const trimmed = name.trim().toLowerCase();
+    const idx = all.findIndex(
+      (o) => o.deliveryDate === deliveryDate && o.name.trim().toLowerCase() === trimmed
+    );
+    if (idx === -1) return null;
+    const changed = all[idx].paymentStatus === "unpaid";
+    if (changed) {
+      all[idx] = { ...all[idx], paymentStatus: "claimed", paymentClaimedAt: new Date().toISOString() };
+      await setJson(ORDERS_KEY, all);
+    }
+    return { order: all[idx], changed };
+  });
+}
+
+/* ---------------- LINE連携 ---------------- */
+
+function lineLinkKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+async function getLineLinkByName(name: string): Promise<LineLink | null> {
+  const all = await getJson<LineLink[]>(LINE_LINKS_KEY, []);
+  const key = lineLinkKey(name);
+  return all.find((l) => lineLinkKey(l.name) === key) ?? null;
+}
+
+async function upsertLineLink(name: string, lineUserId: string, displayName: string): Promise<LineLink> {
+  return withLock("lineLinks", async () => {
+    const all = await getJson<LineLink[]>(LINE_LINKS_KEY, []);
+    const key = lineLinkKey(name);
+    const idx = all.findIndex((l) => lineLinkKey(l.name) === key);
+    const record: LineLink = { name: name.trim(), lineUserId, displayName, linkedAt: new Date().toISOString() };
+    if (idx === -1) {
+      all.push(record);
+    } else {
+      all[idx] = record;
+    }
+    await setJson(LINE_LINKS_KEY, all);
+    return record;
+  });
+}
+
+async function listLineLinks(): Promise<LineLink[]> {
+  return getJson<LineLink[]>(LINE_LINKS_KEY, []);
 }
 
 /* ---------------- 設定 ---------------- */
@@ -233,10 +357,12 @@ async function getSettings(): Promise<Settings> {
 }
 
 async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
-  const current = await getSettings();
-  const next = normalizeSettings({ ...current, ...patch });
-  await setJson(SETTINGS_KEY, next);
-  return next;
+  return withLock("settings", async () => {
+    const current = await getSettings();
+    const next = normalizeSettings({ ...current, ...patch });
+    await setJson(SETTINGS_KEY, next);
+    return next;
+  });
 }
 
 /* ---------------- 画像 ---------------- */
@@ -278,10 +404,14 @@ export const redisStore: StoreBackend = {
   findOrder,
   upsertOrder,
   deleteOrder,
-  setOrderPaid,
+  setOrderPaymentStatus,
+  claimOrderPaid,
   getSettings,
   saveSettings,
   getImageInfo,
   saveImageFile,
   getImageFile,
+  getLineLinkByName,
+  upsertLineLink,
+  listLineLinks,
 };

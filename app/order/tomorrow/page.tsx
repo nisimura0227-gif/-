@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listNames, listMenuItems, getSettings } from "@/lib/store";
-import { tomorrowStr, formatDateJp } from "@/lib/date";
+import { tomorrowStr, formatDateJp, formatCutoffLabel, cutoffEpochMs } from "@/lib/date";
 import OrderForm from "@/components/OrderForm";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,9 @@ export default async function TomorrowOrderPage() {
 
   const now = new Date();
   const dateLabel = formatDateJp(tomorrowStr(now));
+  // 明日の注文の締切は「今日の」指定時刻（前日締切）。
+  const cutoffLabel = formatCutoffLabel(settings.tomorrowCutoffHour, settings.tomorrowCutoffMinute);
+  const cutoffAtMs = cutoffEpochMs(settings.tomorrowCutoffHour, settings.tomorrowCutoffMinute, now);
 
   return (
     <main className="flex min-h-screen flex-col bg-gray-50 px-4 py-4">
@@ -22,7 +25,9 @@ export default async function TomorrowOrderPage() {
         </Link>
         <div>
           <h1 className="text-lg font-bold text-brand-dark">📅 明日のお弁当注文</h1>
-          <p className="text-xs text-gray-500">{dateLabel}分</p>
+          <p className="text-xs text-gray-500">
+            {dateLabel}分・受付は本日{cutoffLabel} まで
+          </p>
         </div>
       </header>
 
@@ -36,10 +41,10 @@ export default async function TomorrowOrderPage() {
           orderedVia="tomorrow"
           names={names}
           menuItems={menuItems}
-          fixedPayment="手渡し"
           largeExtraPrice={settings.largeExtraPrice}
-          cutoffAtMs={0}
+          cutoffAtMs={cutoffAtMs}
           serverNowMs={now.getTime()}
+          cutoffNotice={`⏰ 受付は本日${cutoffLabel}までです。\n💴 支払いは「手渡し」です。本日中に担当者へお支払いください（当日朝の集金はありません）。`}
         />
       )}
     </main>

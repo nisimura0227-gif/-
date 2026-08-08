@@ -13,8 +13,8 @@ import { fileStore } from "./backends/fileStore";
 import { redisStore } from "./backends/redisStore";
 import type { StoreBackend } from "./storeTypes";
 
-export type { NameItem, MenuItem, Order, ImageInfo, UpsertOrderInput, Settings } from "./storeTypes";
-export { PAYMENT_OPTIONS, DEFAULT_SETTINGS, orderTotal } from "./storeTypes";
+export type { NameItem, MenuItem, Order, ImageInfo, UpsertOrderInput, Settings, PaymentStatus, LineLink } from "./storeTypes";
+export { PAYMENT_METHOD, DEFAULT_SETTINGS, orderTotal, paymentStatusLabel } from "./storeTypes";
 
 const useRedis = Boolean(
   (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) ||
@@ -37,7 +37,8 @@ export const listOrderDates = backend.listOrderDates;
 export const findOrder = backend.findOrder;
 export const upsertOrder = backend.upsertOrder;
 export const deleteOrder = backend.deleteOrder;
-export const setOrderPaid = backend.setOrderPaid;
+export const setOrderPaymentStatus = backend.setOrderPaymentStatus;
+export const claimOrderPaid = backend.claimOrderPaid;
 
 export const getSettings = backend.getSettings;
 export const saveSettings = backend.saveSettings;
@@ -45,3 +46,7 @@ export const saveSettings = backend.saveSettings;
 export const getImageInfo = backend.getImageInfo;
 export const saveImageFile = backend.saveImageFile;
 export const getImageFile = backend.getImageFile;
+
+export const getLineLinkByName = backend.getLineLinkByName;
+export const upsertLineLink = backend.upsertLineLink;
+export const listLineLinks = backend.listLineLinks;

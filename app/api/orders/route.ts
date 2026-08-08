@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listOrdersByDate, listMenuItems, upsertOrder, addName, getSettings } from "@/lib/store";
+import { listOrdersByDate, listMenuItems, upsertOrder, addName, getSettings, PAYMENT_METHOD } from "@/lib/store";
 import { isAdminRequest } from "@/lib/authGuard";
 import { isTodayOrderClosed, todayStr, tomorrowStr, formatCutoffLabel } from "@/lib/date";
+import { notifyAdminNewOrder, notifyUserOrderConfirmed } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
@@ -25,7 +26,8 @@ export async function POST(req: NextRequest) {
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const menuItem = typeof body?.menuItem === "string" ? body.menuItem.trim() : "";
   const isLarge = body?.isLarge === true;
-  let paymentMethod = typeof body?.paymentMethod === "string" ? body.paymentMethod.trim() : "";
+  // 支払い方法は「手渡し」固定（現金ケースへの投函は廃止）。クライアント入力は信用しない。
+  const paymentMethod = PAYMENT_METHOD;
 
   if (!name || !menuItem) {
     return NextResponse.json({ message: "名前とメニューを選択してください。" }, { status: 400 });
@@ -42,12 +44,12 @@ export async function POST(req: NextRequest) {
       const label = formatCutoffLabel(settings.cutoffHour, settings.cutoffMinute);
       return NextResponse.json({ message: `本日の受付は終了しました。（受付は${label}まで）` }, { status: 403 });
     }
-    if (!paymentMethod) {
-      return NextResponse.json({ message: "支払い方法を選択してください。" }, { status: 400 });
-    }
   } else {
-    // 明日の注文は「手渡し」固定
-    paymentMethod = "手渡し";
+    // 明日の注文は「本日」の指定時刻（前日締切）まで
+    if (isTodayOrderClosed(settings.tomorrowCutoffHour, settings.tomorrowCutoffMinute)) {
+      const label = formatCutoffLabel(settings.tomorrowCutoffHour, settings.tomorrowCutoffMinute);
+      return NextResponse.json({ message: `明日の受付は終了しました。（受付は本日${label}まで）` }, { status: 403 });
+    }
   }
 
   // 注文時点の金額を記録しておく（後でメニューの金額を変えても過去の注文がずれないように）
@@ -58,6 +60,12 @@ export async function POST(req: NextRequest) {
   }
   const unitPrice = selected.price;
   const largeExtra = isLarge ? settings.largeExtraPrice : 0;
+
+  const existing = await listOrdersByDate(expectedDate).then((list) =>
+    list.find((o) => o.name.trim().toLowerCase() === name.toLowerCase())
+  );
+  const isEdit = Boolean(existing);
+  const amountChanged = existing ? existing.unitPrice + existing.largeExtra !== unitPrice + largeExtra : false;
 
   // 名前は自己登録できる。既に同名があれば addName 内で重複登録されない。
   await addName(name);
@@ -72,6 +80,11 @@ export async function POST(req: NextRequest) {
     largeExtra,
     paymentMethod,
   });
+
+  if (settings.notifyNewOrder) {
+    notifyAdminNewOrder(order, isEdit, amountChanged).catch(() => {});
+  }
+  notifyUserOrderConfirmed(order).catch(() => {});
 
   return NextResponse.json({ order });
 }

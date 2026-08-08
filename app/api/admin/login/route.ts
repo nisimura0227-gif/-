@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_COOKIE, checkAdminPassword, createSessionToken } from "@/lib/auth";
+import { ADMIN_COOKIE, checkAdminPassword, createSessionToken, SESSION_TTL_MS } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 12,
+    maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
   return res;
 }

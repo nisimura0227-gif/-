@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PAYMENT_OPTIONS } from "@/lib/storeTypes";
+import { PAYMENT_METHOD, type PaymentStatus } from "@/lib/storeTypes";
 import { loadSavedName, saveName } from "@/lib/savedName";
 import { useCountdown } from "./useCountdown";
+import LiffLink from "./LiffLink";
 import Button from "./ui/Button";
 import { Card, CardSection } from "./ui/Card";
 import { Badge } from "./ui/Badge";
@@ -18,23 +19,9 @@ type MyOrder = {
   menuItem: string;
   isLarge: boolean;
   paymentMethod: string;
-  isPaid: boolean;
+  paymentStatus: PaymentStatus;
   total: number;
 };
-
-const COLOR_DOT: Record<string, string> = {
-  赤: "#ef4444",
-  青: "#3b82f6",
-  黄: "#eab308",
-  緑: "#22c55e",
-};
-
-function paymentColorDot(opt: string): string | null {
-  for (const key of Object.keys(COLOR_DOT)) {
-    if (opt.startsWith(key)) return COLOR_DOT[key];
-  }
-  return null;
-}
 
 function yen(n: number): string {
   return `¥${n.toLocaleString()}`;
@@ -44,24 +31,23 @@ export default function OrderForm({
   orderedVia,
   names,
   menuItems,
-  fixedPayment,
   largeExtraPrice,
   cutoffAtMs,
   serverNowMs,
+  cutoffNotice,
 }: {
   orderedVia: "today" | "tomorrow";
   names: NameLite[];
   menuItems: MenuLite[];
-  fixedPayment?: string;
   largeExtraPrice: number;
   cutoffAtMs: number;
   serverNowMs: number;
+  /** 締切・支払いに関する案内文（今日/明日で内容が異なる） */
+  cutoffNotice: string;
 }) {
   const router = useRouter();
 
-  // 今日の注文のみ締切の対象
-  const { closed: pastCutoff } = useCountdown(cutoffAtMs, serverNowMs);
-  const closed = orderedVia === "today" && pastCutoff;
+  const { closed } = useCountdown(cutoffAtMs, serverNowMs);
 
   const [phase, setPhase] = useState<"loading" | "form" | "done">("loading");
   const [myOrder, setMyOrder] = useState<MyOrder | null>(null);
@@ -70,9 +56,10 @@ export default function OrderForm({
   const [editingName, setEditingName] = useState(false);
   const [menuItem, setMenuItem] = useState("");
   const [isLarge, setIsLarge] = useState(false);
-  const [payment, setPayment] = useState(fixedPayment ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [claiming, setClaiming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   /** 保存済みの名前で、すでに注文が入っていないか確認する */
   const checkExistingOrder = useCallback(
@@ -111,7 +98,6 @@ export default function OrderForm({
         setMyOrder(existing);
         setMenuItem(existing.menuItem);
         setIsLarge(existing.isLarge);
-        setPayment(fixedPayment ?? existing.paymentMethod);
         setPhase("done");
       } else {
         setPhase("form");
@@ -120,11 +106,11 @@ export default function OrderForm({
     return () => {
       cancelled = true;
     };
-  }, [checkExistingOrder, fixedPayment]);
+  }, [checkExistingOrder]);
 
   const selectedMenu = menuItems.find((m) => m.name === menuItem) ?? null;
   const estimatedTotal = selectedMenu ? selectedMenu.price + (isLarge ? largeExtraPrice : 0) : 0;
-  const canSubmit = Boolean(name.trim()) && Boolean(menuItem) && Boolean(payment) && !submitting && !closed;
+  const canSubmit = Boolean(name.trim()) && Boolean(menuItem) && !submitting && !closed;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -140,7 +126,6 @@ export default function OrderForm({
           name: name.trim(),
           menuItem,
           isLarge,
-          paymentMethod: payment,
         }),
       });
       const data = await res.json();
@@ -155,7 +140,7 @@ export default function OrderForm({
         menuItem: o.menuItem,
         isLarge: o.isLarge,
         paymentMethod: o.paymentMethod,
-        isPaid: o.isPaid === true,
+        paymentStatus: (o.paymentStatus as PaymentStatus) ?? "unpaid",
         total: (o.unitPrice ?? 0) + (o.largeExtra ?? 0),
       });
       setEditingName(false);
@@ -167,6 +152,55 @@ export default function OrderForm({
     }
   }
 
+  async function handleClaimPaid() {
+    if (claiming || !myOrder || myOrder.paymentStatus !== "unpaid") return;
+    setClaiming(true);
+    setError("");
+    try {
+      const res = await fetch("/api/orders/mine/claim-paid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, orderedVia }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || "送信に失敗しました。もう一度お試しください。");
+        return;
+      }
+      setMyOrder((prev) => (prev ? { ...prev, paymentStatus: "claimed" } : prev));
+    } catch {
+      setError("通信エラーが発生しました。電波状況を確認してもう一度お試しください。");
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (cancelling || closed) return;
+    if (!confirm("注文をキャンセルします。よろしいですか？")) return;
+    setCancelling(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/orders/mine?name=${encodeURIComponent(name)}&via=${orderedVia}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.message || "キャンセルに失敗しました。もう一度お試しください。");
+        return;
+      }
+      setMyOrder(null);
+      setMenuItem("");
+      setIsLarge(false);
+      setPhase("form");
+    } catch {
+      setError("通信エラーが発生しました。電波状況を確認してもう一度お試しください。");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   if (phase === "loading") {
     return <p className="py-16 text-center text-sm text-gray-400">読み込み中...</p>;
   }
@@ -175,6 +209,8 @@ export default function OrderForm({
   if (phase === "done" && myOrder) {
     return (
       <div className="flex flex-col gap-5 py-4">
+        <LiffLink name={name} />
+
         <Card className="border-2 border-brand bg-brand-light px-4 py-6 text-center">
           <p className="text-3xl">✅</p>
           <p className="mt-2 text-lg font-bold text-brand-dark">
@@ -205,31 +241,54 @@ export default function OrderForm({
           </div>
           <div className="flex items-center justify-between px-4 py-3.5">
             <span className="text-gray-500">支払い状況</span>
-            {myOrder.isPaid ? (
+            {myOrder.paymentStatus === "paid" ? (
               <Badge variant="success">✅ 支払い済み</Badge>
+            ) : myOrder.paymentStatus === "claimed" ? (
+              <Badge variant="warning">🙋 申告済み・確認待ち</Badge>
             ) : (
-              <Badge variant="warning">⏳ 確認中</Badge>
+              <Badge variant="warning">⏳ 支払い待ち</Badge>
             )}
           </div>
         </Card>
 
+        {myOrder.paymentStatus === "unpaid" && (
+          <div className="flex flex-col gap-2">
+            <Button type="button" variant="accent" size="lg" disabled={claiming} onClick={handleClaimPaid}>
+              {claiming ? "送信中..." : "💰 支払いました（管理者へ知らせる）"}
+            </Button>
+            <HelpText>担当者に現金を手渡したあと押してください。担当者が受け取りを確認すると「支払い済み」になります。</HelpText>
+          </div>
+        )}
+        {myOrder.paymentStatus === "claimed" && (
+          <p className="rounded-xl bg-amber-50 px-4 py-3 text-center text-sm font-semibold text-amber-700">
+            🙋 申告済みです。担当者の確認をお待ちください。
+          </p>
+        )}
+
         {closed ? (
           <p className="rounded-xl bg-gray-50 px-4 py-3 text-center text-sm text-gray-500">
-            受付時間を過ぎたため、変更できません。
+            受付時間を過ぎたため、変更・キャンセルできません。
           </p>
         ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            onClick={() => {
-              setPhase("form");
-              setError("");
-            }}
-          >
-            ✏️ 注文内容を変更する
-          </Button>
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={() => {
+                setPhase("form");
+                setError("");
+              }}
+            >
+              ✏️ 注文内容を変更する
+            </Button>
+            <Button type="button" variant="danger" size="lg" disabled={cancelling} onClick={handleCancel}>
+              {cancelling ? "処理中..." : "❌ 注文をキャンセルする"}
+            </Button>
+          </>
         )}
+
+        {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</p>}
 
         <Button type="button" variant="primary" size="lg" onClick={() => router.push("/")}>
           トップへ戻る
@@ -243,7 +302,9 @@ export default function OrderForm({
     return (
       <div className="flex flex-col items-center gap-4 py-14 text-center">
         <p className="text-4xl">🔴</p>
-        <p className="text-xl font-bold text-gray-700">本日の受付は終了しました</p>
+        <p className="text-xl font-bold text-gray-700">
+          {orderedVia === "today" ? "本日の受付は終了しました" : "明日の受付は終了しました"}
+        </p>
         <Button type="button" variant="muted" size="lg" className="mt-4 w-full" onClick={() => router.push("/")}>
           トップへ戻る
         </Button>
@@ -254,12 +315,13 @@ export default function OrderForm({
   /* ---------------- 注文フォーム ---------------- */
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      {orderedVia === "today" && (
-        <Card className="border-2 border-amber-200 bg-amber-50 text-sm leading-relaxed text-amber-800">
-          <p>⏰ 受付は締切時刻までです。</p>
-          <p>💴「手渡し」を選んだ方は、締切までに担当者へお支払いください。</p>
-        </Card>
-      )}
+      <LiffLink name={name} />
+
+      <Card className="border-2 border-amber-200 bg-amber-50 text-sm leading-relaxed text-amber-800">
+        {cutoffNotice.split("\n").map((line, i) => (
+          <p key={i}>{line}</p>
+        ))}
+      </Card>
 
       <div>
         <FieldLabel>名前</FieldLabel>
@@ -321,41 +383,9 @@ export default function OrderForm({
 
       <div>
         <FieldLabel>支払い方法</FieldLabel>
-        {fixedPayment ? (
-          <div className="rounded-xl border-2 border-brand bg-brand-light px-4 py-4 text-lg font-semibold text-brand-dark">
-            {fixedPayment}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {PAYMENT_OPTIONS.map((opt) => {
-              const dot = paymentColorDot(opt);
-              return (
-                <label
-                  key={opt}
-                  className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-4 text-lg transition-colors ${
-                    payment === opt ? "border-brand bg-brand-light font-bold text-brand-dark" : "border-gray-300"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="payment"
-                    value={opt}
-                    checked={payment === opt}
-                    onChange={(e) => setPayment(e.target.value)}
-                    className="h-5 w-5 accent-brand"
-                  />
-                  {dot && (
-                    <span
-                      className="inline-block h-4 w-4 flex-shrink-0 rounded-full border border-black/10"
-                      style={{ backgroundColor: dot }}
-                    />
-                  )}
-                  {opt}
-                </label>
-              );
-            })}
-          </div>
-        )}
+        <div className="rounded-xl border-2 border-brand bg-brand-light px-4 py-4 text-lg font-semibold text-brand-dark">
+          {PAYMENT_METHOD}
+        </div>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">{error}</p>}

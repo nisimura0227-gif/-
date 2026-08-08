@@ -43,6 +43,7 @@ export default async function TodayOrderPage() {
           largeExtraPrice={settings.largeExtraPrice}
           cutoffAtMs={cutoffAtMs}
           serverNowMs={now.getTime()}
+          cutoffNotice={`⏰ 受付は${cutoffLabel}までです。\n💴 支払いは「手渡し」です。締切までに担当者へお支払いください。`}
         />
       )}
     </main>

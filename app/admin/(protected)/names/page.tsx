@@ -39,7 +39,7 @@ export default async function AdminNamesPage() {
                   <p className="text-xs text-gray-500">
                     今日：{formatOrder(t?.menuItem, t?.isLarge)}
                     {t ? `（${t.paymentMethod}）` : ""}
-                    {t?.isPaid ? " ✅支払い済み" : ""}
+                    {t?.paymentStatus === "paid" ? " ✅支払い済み" : t?.paymentStatus === "claimed" ? " 🙋申告済み" : ""}
                   </p>
                   <p className="text-xs text-gray-500">明日：{formatOrder(m?.menuItem, m?.isLarge)}</p>
                 </div>

@@ -99,7 +99,12 @@ export default function AdminHistoryPage() {
                 <div className="min-w-0">
                   <p className="font-bold text-gray-800">
                     {o.name}
-                    {o.isPaid && <span className="ml-2 text-xs font-normal text-brand-dark">✅ 支払い済み</span>}
+                    {o.paymentStatus === "paid" && (
+                      <span className="ml-2 text-xs font-normal text-brand-dark">✅ 支払い済み</span>
+                    )}
+                    {o.paymentStatus === "claimed" && (
+                      <span className="ml-2 text-xs font-normal text-amber-600">🙋 申告済み</span>
+                    )}
                   </p>
                   <p className="text-sm text-gray-500">
                     {o.menuItem}
