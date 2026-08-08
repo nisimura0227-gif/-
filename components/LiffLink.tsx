@@ -27,8 +27,9 @@ export default function LiffLink({ name }: { name: string }) {
 
         if (!liff.isLoggedIn()) {
           // LINEアプリ内であれば自動的にログインし直す（画面遷移は伴わないことが多い）。
+          // 戻り先を今のページに明示することで、ログイン後に別のページへ飛ばされるのを防ぐ。
           // LINEアプリ外（PCブラウザ等）ではログイン画面へ飛ばすと注文の妨げになるため何もしない。
-          if (liff.isInClient()) liff.login();
+          if (liff.isInClient()) liff.login({ redirectUri: window.location.href });
           return;
         }
 
