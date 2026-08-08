@@ -130,11 +130,11 @@ https://（サイトの公開URL）/api/line/webhook
 
 | 用途 | URL |
 |---|---|
-| 今日の注文へ | `https://liff.line.me/{LIFF ID}/order/today` |
-| 明日の注文へ | `https://liff.line.me/{LIFF ID}/order/tomorrow` |
-| トップページへ（今日・明日どちらも選べる画面） | `https://liff.line.me/{LIFF ID}` |
+| トップページへ（今日・明日どちらも選べる画面・**推奨**） | `https://liff.line.me/{LIFF ID}` |
+| 今日の注文へ直接 | `https://liff.line.me/{LIFF ID}/order/today` |
+| 明日の注文へ直接 | `https://liff.line.me/{LIFF ID}/order/tomorrow` |
 
-どれにするか迷う場合は、一番使う頻度が高い「今日の注文へ」にしておくのがおすすめです。
+**基本はトップページへのリンクを推奨します。** 今日・明日どちらの注文も1つのボタンから選べるほうが分かりやすいためです。「今日の注文へ直接」を使う場合、サイト側で`liff.state`を検知して該当ページへ自動的に移動する処理を実装済みです（`components/LiffInit.tsx`）。
 
 3. 「B（右：管理画面）」は変更不要（`/admin/login` のままでOK）
 4. 保存する
